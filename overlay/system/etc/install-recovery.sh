@@ -55,6 +55,14 @@ I=/sys/devices/system/cpu/cpufreq/interactive
 # scaling_max_freq legível por apps (o app Diagnóstico mostra o teto que o powerguard aplica)
 chmod 0664 /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq /sys/devices/system/cpu/cpu*/cpufreq/scaling_min_freq 2>/dev/null
 
+# Bromite/Chromium leem /data/local/chrome-command-line (build eng). O chrome.sh de fábrica copia
+# um com --ignore-gpu-blacklist (força a Mali-400: Bus error no Bromite) e UA do Chrome 30, em 777.
+# Troca pelo da ROM (/system/etc/chrome-command-line) se for o de fábrica ou faltar.
+CCL=/data/local/chrome-command-line
+if [ ! -f $CCL ] || $BB grep -q -e ignore-gpu-blacklist -e Chrome/30 $CCL 2>/dev/null; then
+  cp /system/etc/chrome-command-line $CCL && chmod 644 $CCL
+fi
+
 # Xposed sob SELinux: garante que o zygote consiga ler jar/módulos/prefs do GravityBox (ver o script)
 [ -x /system/bin/m7s-xposed-selinux ] && /system/bin/m7s-xposed-selinux >/dev/null 2>&1
 

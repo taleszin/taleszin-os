@@ -190,6 +190,18 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.4.2 — 2026-11-14 (correções da telemetria)
+- Telemetria e powerguard podiam não subir no boot: o .pid sobrevive ao reboot e o número era de
+  outro processo (surfaceflinger), então o script achava que já estava rodando e saía. Agora confere
+  o /proc/PID/cmdline. Efeito do bug: tablet sem vigia de bateria naquele boot.
+- Powerguard em degraus: 14/11 03:44 o tablet apagou na bateria com Bromite a 95% de CPU
+  (3,78 → 3,63 V em 1 min, entre duas leituras). Abaixo de 3,80 V o teto desce para 504 MHz e a
+  leitura passa a cada 5 s; volta a 816 MHz acima de 3,88 V.
+- Bromite: o chrome.sh de fábrica copiava para /data/local/chrome-command-line (777)
+  `--ignore-gpu-blacklist` (força a Mali-400; crash nativo "Bus error" no Bromite) e UA do Chrome 30.
+  A ROM traz /system/etc/chrome-command-line com `--enable-low-end-device-mode`, e o boot troca o de
+  fábrica (644).
+
 ### 1.4.1 — 2026-11-14
 - Correção: numa gravação limpa o Xposed não carregava (barra de navegação e tema voltavam ao
   KitKat). O zygote roda com SELinux enforcing e tem `search/read` negado em `app_data_file`

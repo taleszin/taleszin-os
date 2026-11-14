@@ -15,8 +15,10 @@ EVTAGS="am_crash:* am_anr:* am_low_memory:* am_kill:* am_proc_died:* am_proc_sta
 
 mkdir -p $DIR; chmod 755 $DIR; chmod 644 $DIR/* 2>/dev/null
 
-# instância única
-if [ -f $PIDF ] && kill -0 "$(cat $PIDF)" 2>/dev/null; then exit 0; fi
+# instância única: o .pid sobrevive ao reboot e o número pode ter virado outro processo
+# (14/11: 198/199 eram do surfaceflinger e nem telemetria nem powerguard subiram) → confere o cmdline
+op=$(cat $PIDF 2>/dev/null)
+if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-telemetry /proc/$op/cmdline 2>/dev/null; then exit 0; fi
 echo $$ > $PIDF
 
 HDR="ts,uptime_s,batt_pct,batt_mv,batt_status,usb,ac,backlight,cpu_khz,cpu1_on,cpu_busy_pct,iowait_pct,load1,mem_free_kb,mem_cached_kb,swap_used_kb,procs,wlan_rx_b,wlan_tx_b,nand_rd_sect,nand_wr_sect,ctxt_delta,fg_app"

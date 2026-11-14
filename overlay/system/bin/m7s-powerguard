@@ -17,6 +17,10 @@ umask 022   # telemetria legível por apps (ex.: Diagnóstico); nada sensível a
 # Desligar: touch /data/m7s-powerguard.off (e reiniciar), ou POWERGUARD=0 no build.
 POWERGUARD=1; PG_CUTOFF_MV=3480; PG_BATT_MAX_KHZ=816000; CPU_MAX_KHZ=1008000
 PG_INTERVAL=25; PG_CONFIRM=2; PG_CONFIRM_S=5; PG_GRACE_S=120
+# degrau de afundamento (v1.4.2): 14/11 03:44 o tablet apagou com Bromite a 95% de CPU em 816 MHz,
+# 3,78 → 3,63 V em 1 min, entre duas leituras. Abaixo de PG_SAG_MV desce para PG_SAG_KHZ e mede a
+# cada PG_SAG_S s; volta ao teto normal só acima de PG_SAG_OK_MV (histerese contra vai-e-volta).
+PG_SAG_MV=3800; PG_SAG_OK_MV=3880; PG_SAG_KHZ=504000; PG_SAG_S=5
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
 PG_EXT_MAX_KHZ=${PG_EXT_MAX_KHZ:-$CPU_MAX_KHZ}
 [ "$POWERGUARD" = 1 ] || exit 0
@@ -30,7 +34,10 @@ LOG=$DIR/powerguard.log
 PIDF=/data/local/tmp/m7s-powerguard.pid
 mkdir -p $DIR; chmod 755 $DIR; chmod 644 $DIR/* 2>/dev/null
 
-if [ -f $PIDF ] && kill -0 "$(cat $PIDF)" 2>/dev/null; then exit 0; fi
+# instância única: o .pid sobrevive ao reboot e o número pode ter virado outro processo
+# (14/11: 198/199 eram do surfaceflinger e nem telemetria nem powerguard subiram) → confere o cmdline
+op=$(cat $PIDF 2>/dev/null)
+if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-powerguard /proc/$op/cmdline 2>/dev/null; then exit 0; fi
 echo $$ > $PIDF
 
 rd() { cat "$1" 2>/dev/null; }
@@ -41,12 +48,22 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') up=$(up) $*" >> $LOG; }
 [ "$($BB stat -c %s $LOG 2>/dev/null || echo 0)" -gt 200000 ] && mv $LOG $LOG.1
 
 log "início: corte=${PG_CUTOFF_MV}mV x$PG_CONFIRM, bateria=${PG_BATT_MAX_KHZ}kHz, tomada=${PG_EXT_MAX_KHZ}kHz, carência=${PG_GRACE_S}s"
-mode=""; low=0
+mode=""; low=0; sag=0
 while true; do
   usb=$(rd $PS/usb/online); ac=$(rd $PS/ac/online)
   uv=$(rd $PS/battery/voltage_now); mv=$(( ${uv:-0} / 1000 ))
   pct=$(rd $PS/battery/capacity)
-  if [ "$usb" = 1 ] || [ "$ac" = 1 ]; then m=tomada; want=$PG_EXT_MAX_KHZ; else m=bateria; want=$PG_BATT_MAX_KHZ; fi
+  if [ "$usb" = 1 ] || [ "$ac" = 1 ]; then m=tomada; want=$PG_EXT_MAX_KHZ; sag=0
+  else
+    m=bateria; want=$PG_BATT_MAX_KHZ
+    if [ $mv -gt 0 ] && [ $mv -lt $PG_SAG_MV ]; then
+      [ "$sag" = 1 ] || log "afundou ${mv}mV ${pct}%: teto ${PG_SAG_KHZ}kHz"
+      sag=1
+    elif [ "$sag" = 1 ] && [ $mv -ge $PG_SAG_OK_MV ]; then
+      log "recuperou ${mv}mV: teto ${PG_BATT_MAX_KHZ}kHz"; sag=0
+    fi
+    [ "$sag" = 1 ] && want=$PG_SAG_KHZ
+  fi
   # reaplica se algo mudou o teto (ex.: boot hook, outro processo)
   [ "$(rd $F)" != "$want" ] && echo $want > $F 2>/dev/null
   if [ "$m" != "$mode" ]; then
@@ -60,7 +77,7 @@ while true; do
   else
     low=0
   fi
-  echo "$($BB date +%s) $m $want ${mv} ${pct:-?} $low" > $DIR/powerguard.state
+  echo "$($BB date +%s) $m $want ${mv} ${pct:-?} $low $sag" > $DIR/powerguard.state
 
   if [ $low -ge $PG_CONFIRM ]; then
     log "DESLIGANDO: ${mv}mV em $low leituras seguidas"
@@ -73,5 +90,7 @@ while true; do
     exit 0
   fi
 
-  if [ $low -gt 0 ]; then sleep $PG_CONFIRM_S; else sleep $PG_INTERVAL; fi
+  if [ $low -gt 0 ]; then sleep $PG_CONFIRM_S
+  elif [ "$sag" = 1 ]; then sleep $PG_SAG_S
+  else sleep $PG_INTERVAL; fi
 done
