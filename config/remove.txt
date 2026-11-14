@@ -1,0 +1,63 @@
+# Arquivos removidos do system.img (um caminho por linha; '#' comenta).
+# Seção 1: os 36 pacotes de config/disable-packages.txt (desativados e testados ao vivo).
+#          O build confere que cada pacote listado lá tem o APK correspondente aqui.
+/system/app/Galaxy4.apk                                  # com.android.galaxy4
+/system/app/HoloSpiralWallpaper.apk                      # com.android.wallpaper.holospiral
+/system/app/LiveWallpapers.apk                           # com.android.wallpaper
+/system/app/LiveWallpapersPicker.apk                     # com.android.wallpaper.livepicker
+/system/app/MagicSmokeWallpapers.apk                     # com.android.magicsmoke
+/system/app/NoiseField.apk                               # com.android.noisefield
+/system/app/PhaseBeam.apk                                # com.android.phasebeam
+/system/app/VisualizationWallpapers.apk                  # com.android.musicvis
+/system/app/MediaFloat.apk                               # com.android.rk.mediafloat
+/system/app/MediaUploader.apk                            # com.google.android.apps.uploader
+/system/app/NetworkLocation.apk                          # com.google.android.location
+/system/app/RKUpdateService.apk                          # android.rockchip.update.service
+/system/app/StressTest.apk                               # com.cghs.stresstest
+/system/app/Stk.apk                                      # com.android.stk
+/system/app/WAPPushManager.apk                           # com.android.smspush
+/system/app/VideoEditor.apk                              # com.android.videoeditor
+/system/app/VoiceSearchStub.apk                          # com.google.android.voicesearch
+/system/app/QuickSearchBox.apk                           # com.android.quicksearchbox
+/system/app/Gmail.apk                                    # com.google.android.gm
+/system/app/Hangouts.apk                                 # com.google.android.talk
+/system/app/Maps.apk                                     # com.google.android.apps.maps
+/system/app/GoogleTTS.apk                                # com.google.android.tts
+/system/priv-app/talkback.apk                            # com.google.android.marvin.talkback
+/system/priv-app/Velvet.apk                              # com.google.android.googlequicksearchbox
+/system/priv-app/GoogleBackupTransport.apk               # com.google.android.backup
+/system/priv-app/GoogleCalendar.apk                      # com.google.android.calendar
+/system/priv-app/GoogleContactsSyncAdapter.apk           # com.google.android.syncadapters.contacts
+/system/priv-app/GoogleFeedback.apk                      # com.google.android.feedback
+/system/priv-app/GoogleLoginService.apk                  # com.google.android.gsf.login
+/system/priv-app/GooglePartnerSetup.apk                  # com.google.android.partnersetup
+/system/priv-app/GoogleServicesFramework.apk             # com.google.android.gsf
+/system/priv-app/Phonesky.apk                            # com.android.vending
+/system/app/GmsCore.apk                                  # com.google.android.gms
+/system/priv-app/PrebuiltGmsCore.apk                     # com.google.android.gms
+/system/app/Email.apk                                    # com.android.email
+/system/app/Exchange2.apk                                # com.android.exchange
+/system/priv-app/Dialer.apk                              # com.android.dialer
+
+# Seção 2: substituídos por apps embutidos (config/apks.txt)
+/system/app/LatinIME.apk                                  # com.android.inputmethod.latin -> Simple Keyboard
+/system/app/Launcher3.apk                                 # com.android.launcher3 -> KISS (único HOME, sem seletor)
+
+# v1.2.2: duplicados (Browser->Firefox, RkExplorer->Little File Explorer, RkVideoPlayer->VLC); Contacts = agenda de celular
+#         (o WebView e o provedor de contatos continuam)
+/system/app/Browser.apk                                   # com.android.browser
+/system/app/RkExplorer.apk                                # com.android.rk
+/system/app/RkVideoPlayer.apk                             # android.rk.RockVideoPlayer
+/system/priv-app/Contacts.apk                             # com.android.contacts
+# Seção 3: pré-instalação de fábrica (2014; copiada para /data/app no 1o boot — ~156 MB de /data)
+/system/preinstall/AirDroid.apk                           # 10079825 bytes
+/system/preinstall/Buscape-multilaser_tablet.apk          # 3042462 bytes
+/system/preinstall/Pocket.apk                             # 7057450 bytes
+/system/preinstall/ToPDF.apk                              # 69993 bytes
+/system/preinstall/com.dropbox.android-1.apk              # 10963009 bytes
+/system/preinstall/com.facebook.katana-1.apk              # 13786704 bytes
+/system/preinstall/com.facebook.orca-1.apk                # 9425189 bytes
+/system/preinstall/com.mobisystems.office.apk             # 24205900 bytes
+/system/preinstall/com.rovio.angrybirds-1.apk             # 45421011 bytes
+/system/preinstall/com.skype.raider-1.apk                 # 15232847 bytes
+/system/preinstall/com.twitter.android-1.apk              # 6211436 bytes

@@ -1,0 +1,81 @@
+== cpufreq
+scaling_governor: interactive
+scaling_available_governors: conservative ondemand userspace powersave interactive performance 
+scaling_available_frequencies: 312000 504000 816000 912000 1008000 
+scaling_min_freq: 312000
+scaling_max_freq: 1008000
+cpuinfo_max_freq: 1008000
+312000 6730
+504000 279
+816000 7451
+912000 857
+1008000 0
+== interactive
+interactive
+/sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay: 20000
+/sys/devices/system/cpu/cpufreq/interactive/boost: 0
+/sys/devices/system/cpu/cpufreq/interactive/boostpulse: 
+/sys/devices/system/cpu/cpufreq/interactive/boostpulse_duration: 500000
+/sys/devices/system/cpu/cpufreq/interactive/go_hispeed_load: 99
+/sys/devices/system/cpu/cpufreq/interactive/hispeed_freq: 816000
+/sys/devices/system/cpu/cpufreq/interactive/min_sample_time: 80000
+/sys/devices/system/cpu/cpufreq/interactive/target_loads: 90 
+/sys/devices/system/cpu/cpufreq/interactive/timer_rate: 20000
+/sys/devices/system/cpu/cpufreq/interactive/timer_slack: 80000
+== cpu online
+0-1
+== ddr
+mali-utgard.0
+rk30-adc
+rk30-battery
+rk30-lcdc.0
+== mali
+== io
+mtdblock6: noop deadline [cfq]  ra=128
+mtdblock8: noop deadline [cfq]  ra=128
+== battery
+/sys/class/power_supply/ac/uevent
+POWER_SUPPLY_NAME=ac
+POWER_SUPPLY_ONLINE=0
+/sys/class/power_supply/battery/uevent
+POWER_SUPPLY_NAME=battery
+POWER_SUPPLY_STATUS=Charging
+POWER_SUPPLY_HEALTH=Good
+POWER_SUPPLY_PRESENT=1
+POWER_SUPPLY_VOLTAGE_NOW=3900000
+POWER_SUPPLY_TECHNOLOGY=Li-ion
+POWER_SUPPLY_CAPACITY=59
+POWER_SUPPLY_VOLTAGE_MAX_DESIGN=4110
+POWER_SUPPLY_VOLTAGE_MIN_DESIGN=3550
+/sys/class/power_supply/usb/uevent
+POWER_SUPPLY_NAME=usb
+POWER_SUPPLY_ONLINE=1
+== thermal
+== wakelocks
+name	count	expire_count	wake_count	active_since	total_time	sleep_time	max_time	last_change
+"PowerManagerService.WakeLocks"	16	0	0	0	45199973634	0	10304007378	149895201268
+"alarm"	4	0	0	0	23398500	0	14788875	149854997518
+"AudioOutLock"	6	0	0	0	30837874505	0	10092207003	136831163892
+"ApmOutput"	17	0	0	0	4403250	0	1681125	133932034392
+"alarm_rtc"	0	0	0	0	0	0	0	0
+"KeyEvents"	491	0	0	0	298933501	0	103363125	132816089517
+"event1-496"	478	0	0	0	85140750	0	6282375	132815954517
+"rtw_wifi"	8	0	0	0	205500	0	30375	116466919014
+"radio-interface"	1	0	0	0	1003817627	0	1003817627	38758268881
+"ApmAudio"	10	0	0  mWakefulness=Awake
+  mWakeLockSummary=0x0
+  mLastWakeTime=0 (155140 ms ago)
+  mSendWakeUpFinishedNotificationWhenReady=false
+  mHoldingWakeLockSuspendBlocker=false
+  mWakeUpWhenPluggedOrUnpluggedConfig=false
+  mScreenOffTimeoutSetting=60000
+  mMaximumScreenOffTimeoutFromDeviceAdmin=2147483647 (enforced=false)
+Screen off timeout: 60000 ms
+Wake Locks: size=0
+  PowerManagerService.WakeLocks: ref count=0
+== wifi power
+15
+2
+60000
+200
+0

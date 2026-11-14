@@ -1,0 +1,77 @@
+#!/system/bin/sh
+umask 022   # telemetria legível por apps (ex.: Diagnóstico); nada sensível aqui
+# m7s-powerguard — guarda de bateria para a bateria gasta do M7s (telemetria 13–14/11/2026:
+# 3,80 V logo ao desplugar com 100%, 99%→1% em ~50 min, desligamentos súbitos com Firefox a
+# 81–94% de CPU em 3,66 V e 3,38 V; o gauge rk30-battery é por tensão e mostrou 35% a 3,38 V).
+#
+# Só lê sysfs e escreve 1 nó de cpufreq. A cada PG_INTERVAL s:
+#   - fora da tomada (usb=0 e ac=0): scaling_max_freq = PG_BATT_MAX_KHZ (816 MHz) — corta os picos
+#     de corrente do degrau de 1008 MHz, que derrubam a tensão da bateria velha;
+#   - na tomada: scaling_max_freq = PG_EXT_MAX_KHZ (o CPU_MAX_KHZ da ROM);
+#   - fora da tomada, depois de PG_GRACE_S s de uptime: se a tensão ficar < PG_CUTOFF_MV em
+#     PG_CONFIRM leituras seguidas (a confirmação é a cada PG_CONFIRM_S s), desliga limpo pelo
+#     framework (ShutdownActivity, sem perguntar) — o Android fecha apps e desmonta o /data antes de
+#     a bateria cair sozinha. Se em 60 s ainda estiver de pé: sync + reboot -p.
+# Não segura wakelock: em suspend o laço para junto com o resto (a CPU não gasta nada lá).
+# Log: /data/m7s-telemetry/powerguard.log; estado atual: /data/m7s-telemetry/powerguard.state.
+# Desligar: touch /data/m7s-powerguard.off (e reiniciar), ou POWERGUARD=0 no build.
+POWERGUARD=1; PG_CUTOFF_MV=3480; PG_BATT_MAX_KHZ=816000; CPU_MAX_KHZ=1008000
+PG_INTERVAL=25; PG_CONFIRM=2; PG_CONFIRM_S=5; PG_GRACE_S=120
+[ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
+PG_EXT_MAX_KHZ=${PG_EXT_MAX_KHZ:-$CPU_MAX_KHZ}
+[ "$POWERGUARD" = 1 ] || exit 0
+[ -f /data/m7s-powerguard.off ] && exit 0
+
+BB=/system/bin/busybox
+PS=/sys/class/power_supply
+F=/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+DIR=/data/m7s-telemetry
+LOG=$DIR/powerguard.log
+PIDF=/data/local/tmp/m7s-powerguard.pid
+mkdir -p $DIR; chmod 755 $DIR; chmod 644 $DIR/* 2>/dev/null
+
+if [ -f $PIDF ] && kill -0 "$(cat $PIDF)" 2>/dev/null; then exit 0; fi
+echo $$ > $PIDF
+
+rd() { cat "$1" 2>/dev/null; }
+up() { $BB awk '{printf "%d",$1}' /proc/uptime; }
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') up=$(up) $*" >> $LOG; }
+
+# log não cresce sem limite (~200 KB)
+[ "$($BB stat -c %s $LOG 2>/dev/null || echo 0)" -gt 200000 ] && mv $LOG $LOG.1
+
+log "início: corte=${PG_CUTOFF_MV}mV x$PG_CONFIRM, bateria=${PG_BATT_MAX_KHZ}kHz, tomada=${PG_EXT_MAX_KHZ}kHz, carência=${PG_GRACE_S}s"
+mode=""; low=0
+while true; do
+  usb=$(rd $PS/usb/online); ac=$(rd $PS/ac/online)
+  uv=$(rd $PS/battery/voltage_now); mv=$(( ${uv:-0} / 1000 ))
+  pct=$(rd $PS/battery/capacity)
+  if [ "$usb" = 1 ] || [ "$ac" = 1 ]; then m=tomada; want=$PG_EXT_MAX_KHZ; else m=bateria; want=$PG_BATT_MAX_KHZ; fi
+  # reaplica se algo mudou o teto (ex.: boot hook, outro processo)
+  [ "$(rd $F)" != "$want" ] && echo $want > $F 2>/dev/null
+  if [ "$m" != "$mode" ]; then
+    log "fonte=$m teto=${want}kHz ${mv}mV ${pct}%"
+    mode=$m
+  fi
+
+  if [ $m = bateria ] && [ "$(up)" -ge $PG_GRACE_S ] && [ $mv -gt 0 ] && [ $mv -lt $PG_CUTOFF_MV ]; then
+    low=$((low + 1))
+    log "tensão baixa ${mv}mV ${pct}% ($low/$PG_CONFIRM)"
+  else
+    low=0
+  fi
+  echo "$($BB date +%s) $m $want ${mv} ${pct:-?} $low" > $DIR/powerguard.state
+
+  if [ $low -ge $PG_CONFIRM ]; then
+    log "DESLIGANDO: ${mv}mV em $low leituras seguidas"
+    sync
+    am start -a android.intent.action.ACTION_REQUEST_SHUTDOWN \
+      --ez android.intent.extra.KEY_CONFIRM false >> $LOG 2>&1
+    sleep 60
+    log "framework não desligou em 60 s: sync + reboot -p"
+    sync; reboot -p
+    exit 0
+  fi
+
+  if [ $low -gt 0 ]; then sleep $PG_CONFIRM_S; else sleep $PG_INTERVAL; fi
+done

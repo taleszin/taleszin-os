@@ -1,0 +1,12 @@
+# Insumos externos fixados por sha256 (o build falha se qualquer um divergir).
+# nome  sha256  url
+stock-zip      4ce60d01d4bbc08118cf4f5a32d00ef00ab8b9d55b91918a029c186264690b2c  (fornecido pelo usuário: Multilaser_M7S_Dual_Core-SUPRA_ML01_140403_4.4_RBT.zip)
+stock-update   716b6314141bf57432e46f35d3b7c04e1157e32b20cb4a8f94cddbb7e8dec48c  (dentro do zip: Firmware/update_3026v_4.4_jz_bx_201404032111.img)
+stock-system   ffa68ea0c821dd6dd25e50b107b080e3ebe93c23d2d2cb182cee5a2190a934c0  (partição system do pacote)
+tzdata         01b4a91cec5167ed48c11e8ab78f2048cead78ce94b0cafcad0ae8c5a3044d3d  https://data.iana.org/time-zones/releases/tzdata2026f.tar.gz
+tzcode         5a18da01393679ef2559214dc687563f7f3d05691f6f58b7fbc0166f3e796cd6  https://data.iana.org/time-zones/releases/tzcode2026f.tar.gz
+roboto3        1653dbe12f248da8fb0b9920db7b9496cd677ed3981154f6f15285c8bd4e334f  https://github.com/googlefonts/roboto-3-classic/releases/download/v3.016/Roboto_v3.016.zip
+roboto3-ofl    061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41  https://raw.githubusercontent.com/googlefonts/roboto-3-classic/v3.016/OFL.txt
+gsflex         c20b00878dd801d1bfc06d771732447940c7255bf94cf538ce0102c7fb06fa85  https://github.com/googlefonts/googlesans-flex/releases/download/v5.000/GoogleSansFlex-v5.000.zip
+gsflex-ofl     831b6e041705873c3e6efb18c4c96202bc41c8be42a456d3d26c47abf14816d0  https://raw.githubusercontent.com/googlefonts/googlesans-flex/v5.000/OFL.txt
+fonttools      d76f8fdcb6936f5e1045a0c9dd721a4bf11112e60d1e243bfa1d39f06a8b3104  https://files.pythonhosted.org/packages/35/74/4ea331ecc65ba05a58b1e4e8ccd604c8a15565f876dfbf93fc2a2ea2e22b/fonttools-4.68.0-py3-none-any.whl

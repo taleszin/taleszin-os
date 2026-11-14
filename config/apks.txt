@@ -1,0 +1,46 @@
+# APKs embutidos. Baixados pelo build e conferidos por sha256 (nada disso é versionado).
+# destino: /system/app ou /system/priv-app = app de sistema (não desinstala; libs nativas vão para /system/lib)
+#          /system/preinstall = o PackageManager da Rockchip copia para /data/app no 1º boot após wipe
+#                               (vira app comum: desinstalável, atualizável, libs extraídas normalmente)
+# Firefox fica em preinstall de propósito: o libmozglue carrega libxul de $MOZ_ANDROID_LIBDIR
+# (= nativeLibraryDir), que num app de sistema do 4.4 aponta para /data/app-lib/<nome> vazio.
+#
+# 4ª coluna opcional: condição VAR=valor (de config/rom.conf); a linha só entra se for verdadeira.
+# url local:VAR = copia o arquivo cujo caminho está em VAR (config/rom.conf) e confere o sha256; não baixa.
+# Apps FOSS (v1.2): versões com minSdk <= 19 no índice do F-Droid (repo ou archive), sha256 do índice.
+# Xposed/GravityBox: o servidor oficial (dl-xda.xposed.info) saiu do ar; a cópia vem do Internet
+# Archive com o mesmo arquivo — o md5 bate com o prefixo do nome oficial (_36570c/_84d42f), o SHA-1
+# bate com o índice do arquivo e a assinatura é do autor (CN=rovo89 / CN=C3C0). Ver docs/FINDINGS.md.
+#
+# destino                                  sha256                                                            url
+/system/app/SimpleKeyboard.apk             03487563ee14ed8e6b78a7eca1aaf46ce9de4f3f2568af7cdce57e093b292478  https://f-droid.org/repo/rkr.simplekeyboard.inputmethod_132.apk
+/system/app/KISS.apk                       9f09fe5cc43241906db12763ccf8da35b4430c69e066d20273e2ee41ce891e1e  https://f-droid.org/repo/fr.neamar.kiss_219.apk
+/system/preinstall/Firefox.apk             9f5d2b4c2673212a693099a0f0194fbce17c349b4cc17f16456237de7b299fed  https://archive.mozilla.org/pub/mobile/releases/68.11.0/android-api-16/multi/fennec-68.11.0.multi.android-arm.apk  FIREFOX=1
+# SkyTube travado na 2.999: 3.000–3.003 não tocam vídeo no 4.4 (issue SkyTubeTeam/SkyTube#1446, 11/11/2026)
+/system/preinstall/SkyTube.apk             fd68f3689b53e56bdf967cfb6d5876fa35049ae3483303a2acad6ce7cfdd77be  https://f-droid.org/archive/free.rm.skytube.oss_59.apk
+/system/preinstall/F-Droid.apk             49128b38ccf5cb2676435dba1c6143f78a4e33dcd8bbca91a529881c94528ab5  https://f-droid.org/repo/org.fdroid.fdroid_1012051.apk
+/system/preinstall/Ameixa.apk              91d138273851dc2a04fae0efae7e88851153842efbfc3fe59d5650148c9f759f  https://f-droid.org/repo/org.xphnx.ameixa_4111.apk
+/system/preinstall/XposedInstaller.apk     6a97741c1cf710c6cc0cbede4856bc1ad191f13ae9761c518c3fe25c2c22a48c  https://web.archive.org/web/20200113231237id_/https://dl-xda.xposed.info/modules/de.robv.android.xposed.installer_v33_36570c.apk  XPOSED=1
+/system/preinstall/GravityBox.apk          acda704d8434738e2cc4d4ce2a2eabeaed833cda7c7a8ed951b6b90884c5021d  https://web.archive.org/web/20220503041939id_/http://dl-xda.xposed.info/modules/com.ceco.kitkat.gravitybox_v138_84d42f.apk  XPOSED=1
+/system/app/PranchetaTaleszin.apk         07d7f380132c6467c973c214018770cb4a5edaba023b365700279d15544923f8  local:PRANCHETA_APK  PRANCHETA=1
+/system/app/LittleFileExplorer.apk        fc6c9134fd714ef059305eef43ca093880bf0937eb8f3ed750c06899a7162fe0  https://f-droid.org/repo/com.martinmimigames.simplefileexplorer_20.apk  EXTRA_APPS=1
+/system/app/MyNotes.apk                   39f747d20cbb722fea8870f32dda189d2f4acea7e2bc1efee6da0fff61f35e37  https://f-droid.org/repo/com.aa.mynotes_7.apk  EXTRA_APPS=1
+/system/preinstall/DocumentViewer.apk     5fed92a27b2b4238e2f29a9bb73e5058d4fdd8d5d0c2d5f1d31c65a6cde70a0e  https://f-droid.org/archive/org.sufficientlysecure.viewer_2822.apk  EXTRA_APPS=1
+# v1.2.2: 2ª opção de YouTube (fork do NewPipe com build KitKat + Conscrypt), player de mídia, câmera
+/system/preinstall/BravePipe.apk          11b106a1407e26f40413d0761e5dfc0ba011d07e5952935efa550a61eb9cf470  https://github.com/bravepipeproject/BravePipe/releases/download/v0.28.8-2.8.3/BravePipe_legacy_v0.28.8-2.8.3.apk  EXTRA_APPS=1
+/system/preinstall/VLC.apk                e8ff40c4a1ebc377ec32e22aec69b617c5b25677c1b4735c06b96322257f1aa8  https://f-droid.org/repo/org.videolan.vlc_13070205.apk  EXTRA_APPS=1
+/system/preinstall/OpenCamera.apk         3b58721af4a79f42f5e6f6832a998493719b519f0d65d942d15a9593845049e4  https://f-droid.org/archive/net.sourceforge.opencamera_90.apk  EXTRA_APPS=1
+/system/app/TaleszinHome.apk              bd5fae865aa99c30678c03ba716b198ac5a35b7eda96b0668d1d2bca15d8a447  local:TALESZIN_HOME_APK  HOME_LAUNCHER=taleszin
+/system/preinstall/M7sTema.apk            74f78566d00b23f0a2eed17e43f108ac7e4baa2c0bed77806129b18ad12582f0  local:TEMA_APK  TEMA=1
+/system/app/Diagnostico.apk              4f509e3f9ef8fdc875be5a628ed3656510b181e4262274de466f4540ba4c2b39  local:DIAGNOSTICO_APK  DIAGNOSTICO=1
+# v1.4: Bromite = Chromium 81 com bloqueio de anúncios (último build com minSdk 19); lê JS moderno (?., ??) que o Firefox 68 não lê
+/system/preinstall/Bromite.apk           92dfd3aa0b0faba4f985f012f7583985625d389972140ef83423a329b34b8522  https://github.com/bromite/bromite/releases/download/81.0.4044.127/arm_ChromePublic.apk  BROMITE=1
+# v1.4: jogos leves e livres (F-Droid), todos minSdk <= 19; preinstall = desinstaláveis
+/system/preinstall/Puzzles.apk               afefba545fa538c7ef8058bb3adf8b9a2882ad4c901c82f8d1069d6b2beeb644  https://f-droid.org/archive/name.boyle.chris.sgtpuzzles_138.apk  JOGOS=1
+/system/preinstall/Jogo2048.apk              7c66ccdf3d1fb9fd18d2a088f34bde4069c1107e4fc4b787b18012d7021df17f  https://f-droid.org/archive/com.uberspot.a2048_25.apk  JOGOS=1
+/system/preinstall/FrozenBubble.apk          bf291a12e88c84e559bd4f0faf99163a6a5b55da995df69ef10f888c6bba77e4  https://f-droid.org/archive/org.jfedor.frozenbubble_54.apk  JOGOS=1
+/system/preinstall/Sudoku.apk                bb8a81fb9ac82f8d39ed08f6aeec4b422419c73f8da434646c5a01311aa71058  https://f-droid.org/archive/org.moire.opensudoku_20220830.apk  JOGOS=1
+/system/preinstall/Paciencia.apk             59a0cf4acfaf69a5868d85aab19c837d85cb1b5e8dbcdd7d5596fb47003a3392  https://f-droid.org/archive/de.tobiasbielefeld.solitaire_41.apk  JOGOS=1
+/system/preinstall/Xadrez.apk                ef42609d511d42e26a8264f6043c8028433b932391f4565f0c2ba4bdf16eab92  https://f-droid.org/archive/jwtc.android.chess_160.apk  JOGOS=1
+/system/preinstall/Blockinger.apk            0c51e2255401eeb16ada6ea4eaa8aec1c2b715a789b12a004355a3812fe1c111  https://f-droid.org/archive/org.blockinger.game_14.apk  JOGOS=1
+/system/preinstall/Klooni.apk                55641cdb5dba7f30c1d229cf8a34f390a8ff6b3f60cdff9b45d277919f33ce24  https://f-droid.org/repo/dev.lonami.klooni_860.apk  JOGOS=1

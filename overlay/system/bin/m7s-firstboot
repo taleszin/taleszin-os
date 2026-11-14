@@ -1,0 +1,154 @@
+#!/system/bin/sh
+# m7s-firstboot — aplica os padrões de Settings da ROM uma única vez (1º boot após o wipe).
+# Disparado pelo install-recovery.sh. Marca: /data/local/m7s-firstboot.done
+# (apague a marca e reinicie para reaplicar; os valores vêm de /system/etc/m7s.conf).
+MARK=/data/local/m7s-firstboot.done
+LOG=/data/local/m7s-firstboot.log
+ANIM_SCALE=0; ANIM_SCALE_I32=0; HAPTIC=0; TOUCH_SOUNDS=0; LOCKSCREEN_SOUNDS=0
+LOCKSCREEN_DISABLED=1; WIFI_SLEEP_POLICY=1; WIFI_SCAN_INTERVAL_MS=60000; WIFI_SCAN_ALWAYS=0
+IME=rkr.simplekeyboard.inputmethod/.latin.LatinIME
+KISS_THEME=; ICON_PACK=; DARK_APPS=0; HOME_LAUNCHER=kiss; XPOSED=0; XPOSED_REBOOT=1
+GB_BATTERY_STYLE=1; GB_CENTER_CLOCK=0; GB_FLAT_ICONS=0; GB_MODERN=0
+BB=/system/bin/busybox
+[ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
+[ -f $MARK ] && exit 0
+
+# espera o system_server (Settings provider) subir
+i=0
+until [ "$(getprop sys.boot_completed)" = 1 ]; do
+  sleep 3; i=$((i+1)); [ $i -gt 200 ] && exit 1
+done
+sleep 10
+
+ok=1
+put() {
+  if settings put "$1" "$2" "$3" >>$LOG 2>&1; then echo "$1 $2=$3" >>$LOG; else ok=0; echo "FALHOU $1 $2" >>$LOG; fi
+}
+echo "== $(date)" >>$LOG
+put global window_animation_scale     $ANIM_SCALE
+put global transition_animation_scale $ANIM_SCALE
+put global animator_duration_scale    $ANIM_SCALE
+put system haptic_feedback_enabled    $HAPTIC
+put system sound_effects_enabled      $TOUCH_SOUNDS
+put system lockscreen_sounds_enabled  $LOCKSCREEN_SOUNDS
+put secure lockscreen.disabled        $LOCKSCREEN_DISABLED
+put system screen_brightness_mode     0
+put global wifi_sleep_policy          $WIFI_SLEEP_POLICY
+put global wifi_scan_always_enabled   $WIFI_SCAN_ALWAYS
+put global wifi_supplicant_scan_interval_ms $WIFI_SCAN_INTERVAL_MS
+put secure enabled_input_methods      $IME
+put secure default_input_method       $IME
+
+# O WindowManager do 4.4 só lê as escalas de animação no boot; para valer já, chama
+# IWindowManager.setAnimationScale(which, float) — transação 51 conferida no framework.jar
+# deste firmware. O float vai como i32 com os mesmos bits (gerado no build).
+for w in 0 1 2; do service call window 51 i32 $w i32 $ANIM_SCALE_I32 >>$LOG 2>&1; done
+
+# ---------------------------------------------------------------- visual (v1.1)
+# setprefs PACOTE ARQUIVO MODO 'tipo|nome|valor'... — grava/mescla um SharedPreferences XML.
+# O app é parado antes para não sobrescrever o arquivo com o que tem em memória.
+setprefs() {
+  pkg=$1; f=$2; mode=$3; shift 3
+  d=/data/data/$pkg
+  if [ ! -d $d ]; then echo "FALHOU prefs $pkg: $d não existe" >>$LOG; ok=0; return 1; fi
+  # o teclado ativo não pode levar force-stop (o IMMS do 4.4 desmarca o IME); só mata o processo
+  if [ "$pkg" = "${IME%%/*}" ]; then
+    pid=$($BB pidof $pkg) && kill $pid
+  else
+    am force-stop $pkg >>$LOG 2>&1
+  fi
+  uid=$($BB stat -c %u $d)
+  mkdir -p $d/shared_prefs && chown $uid:$uid $d/shared_prefs && chmod 771 $d/shared_prefs
+  x=$d/shared_prefs/$f; t=$x.m7s
+  # (o mksh do 4.4 não tem printf)
+  [ -f $x ] || echo "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>" > $x
+  args=""
+  for e in "$@"; do n=${e#*"|"}; n=${n%%"|"*}; args="$args -e 'name=\"$n\"'"; done
+  # (as entradas "< name=..." vêm de uma versão antiga com bug de expansão no mksh: descarta)
+  eval "$BB grep -v $args -e '</map>' -e '<map/>' -e '<map />' -e '^ *< name=' $x" > $t
+  $BB grep -q '<map>' $t || echo '<map>' >> $t
+  for e in "$@"; do
+    ty=${e%%"|"*}; r=${e#*"|"}; n=${r%%"|"*}; v=${r#*"|"}
+    if [ $ty = string ]; then echo "    <string name=\"$n\">$v</string>" >> $t
+    else echo "    <$ty name=\"$n\" value=\"$v\" />" >> $t; fi
+  done
+  echo '</map>' >> $t
+  mv $t $x && chown $uid:$uid $x && chmod $mode $x && echo "prefs $pkg/$f: $*" >>$LOG || ok=0
+}
+
+# KISS: tema e pacote de ícones (Ameixa). O launcher volta sozinho depois do force-stop.
+kiss=""
+[ -n "$KISS_THEME" ] && kiss="$kiss string|theme|$KISS_THEME"
+[ -n "$ICON_PACK" ] && kiss="$kiss string|icons-pack|$ICON_PACK"
+# Prancheta do Taleszin como 1º favorito (a barra de favoritos do KISS). O KISS cria os favoritos
+# padrão no 1º onCreate (first-run-favorites) com addToFavorites, que só acrescenta — mantém a lista.
+PRANCHETA_ID='app://app.mamba.prancheta/app.mamba.prancheta.MainActivity'
+if pm path app.mamba.prancheta >/dev/null 2>&1; then
+  am force-stop fr.neamar.kiss >>$LOG 2>&1
+  kx=/data/data/fr.neamar.kiss/shared_prefs/fr.neamar.kiss_preferences.xml
+  fav=$($BB sed -n 's|.*<string name="favorite-apps-list">\(.*\)</string>.*|\1|p' $kx 2>/dev/null)
+  case ";$fav" in *";$PRANCHETA_ID;"*) ;; *) kiss="$kiss string|favorite-apps-list|$PRANCHETA_ID;$fav";; esac
+fi
+# O launcher volta sozinho logo após o force-stop e, se estiver vivo, regrava as prefs da memória
+# por cima das nossas: para de novo depois de gravar, para ele reler o arquivo.
+if [ -n "$kiss" ]; then
+  am force-stop fr.neamar.kiss >>$LOG 2>&1
+  setprefs fr.neamar.kiss fr.neamar.kiss_preferences.xml 660 $kiss
+  am force-stop fr.neamar.kiss >>$LOG 2>&1
+fi
+
+# Taleszin Home como única tela inicial: desativa o KISS (continua instalado; reativar = pm enable fr.neamar.kiss)
+if [ "$HOME_LAUNCHER" = taleszin ] && pm path app.taleszin.home >/dev/null 2>&1; then
+  pm disable fr.neamar.kiss >>$LOG 2>&1 && echo "home: Taleszin Home (KISS desativado)" >>$LOG
+fi
+
+if [ "$DARK_APPS" = 1 ]; then
+  setprefs rkr.simplekeyboard.inputmethod rkr.simplekeyboard.inputmethod_preferences.xml 660 \
+    'string|pref_keyboard_theme_20140509|4'
+  setprefs org.fdroid.fdroid org.fdroid.fdroid_preferences.xml 660 'string|theme|dark'
+fi
+
+# Xposed: o app_process já está no /system; falta o XposedBridge.jar no /data do Installer
+# (caminho fixo no binário) e a lista de módulos. Ativa no próximo boot.
+reboot_now=0
+if [ "$XPOSED" = 1 ] && [ -f /system/etc/m7s/XposedBridge.jar ]; then
+  XI=/data/data/de.robv.android.xposed.installer
+  gb=$(pm path com.ceco.kitkat.gravitybox 2>/dev/null | $BB sed -n 's/^package://p')
+  if [ -d $XI ] && [ -n "$gb" ]; then
+    xu=$($BB stat -c %u $XI)
+    mkdir -p $XI/bin $XI/conf
+    cp /system/etc/m7s/XposedBridge.jar $XI/bin/XposedBridge.jar
+    echo "$gb" > $XI/conf/modules.list
+    tema=$(pm path com.m7s.tema 2>/dev/null | $BB sed -n 's/^package://p')
+    [ -n "$tema" ] && echo "$tema" >> $XI/conf/modules.list
+    chown $xu:$xu $XI/bin $XI/conf $XI/bin/XposedBridge.jar $XI/conf/modules.list
+    chmod 771 $XI/bin $XI/conf; chmod 644 $XI/bin/XposedBridge.jar; chmod 664 $XI/conf/modules.list
+    setprefs de.robv.android.xposed.installer enabled_modules.xml 660 'int|com.ceco.kitkat.gravitybox|1' 'int|com.m7s.tema|1'
+    # GravityBox lê as prefs de dentro do SystemUI (XSharedPreferences): o arquivo tem de ser legível por todos
+    setprefs com.ceco.kitkat.gravitybox com.ceco.kitkat.gravitybox_preferences.xml 664 \
+      "string|pref_battery_style|$GB_BATTERY_STYLE" "boolean|pref_battery_percent_text|false" \
+      "boolean|pref_statusbar_center_clock|$([ "$GB_CENTER_CLOCK" = 1 ] && echo true || echo false)" \
+      "boolean|pref_signal_cluster_lollipop_icons|$([ "$GB_FLAT_ICONS" = 1 ] && echo true || echo false)" \
+      'boolean|pref_statusbar_icon_color_enable|false'
+    # (pref_navbar_override sem pref_navbar_enable=true ESCONDE a barra: o app do GravityBox grava false como padrão)
+    # pacote "cara de Android recente": botões de navegação do Lollipop, bateria com %, notificações
+    # flutuantes, "limpar tudo" + barra de RAM nos recentes, brilho deslizando na barra, volume expansível
+    if [ "$GB_MODERN" = 1 ]; then
+      setprefs com.ceco.kitkat.gravitybox com.ceco.kitkat.gravitybox_preferences.xml 664 \
+        'boolean|pref_navbar_override|true' 'boolean|pref_navbar_enable|true' \
+        'boolean|pref_navbar_always_on_bottom|true' 'string|pref_navbar_android_l_icon_style|LARGE' \
+        'boolean|pref_battery_percent_text|true' \
+        'boolean|pref_heads_up_master_switch|true' 'string|pref_heads_up_position|48' \
+        'string|pref_recents_clear_all2|85' 'string|pref_rambar|80' \
+        'boolean|pref_statusbar_brightness|true' 'boolean|pref_volume_panel_expandable|true' \
+        'boolean|pref_gb_theme_dark|true'
+    fi
+    echo "xposed: jar + modules.list ($gb)" >>$LOG
+    [ "$XPOSED_REBOOT" = 1 ] && reboot_now=1
+  else ok=0; echo "FALHOU xposed: $XI ou GravityBox ausente" >>$LOG; fi
+fi
+
+[ $ok = 1 ] && touch $MARK
+if [ $reboot_now = 1 ] && [ $ok = 1 ]; then
+  echo "reiniciando para ativar o Xposed" >>$LOG; sync; sleep 2; reboot
+fi

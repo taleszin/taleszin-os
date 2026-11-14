@@ -1,0 +1,59 @@
+Taleszin OS (repositório m7s-kitkat-rom / taleszin-os)
+=======================================================
+
+Licença deste repositório
+-------------------------
+Scripts, configuração, overlay e documentação deste repositório: MIT (ver LICENSE).
+
+O que NÃO está neste repositório e não é redistribuído
+-------------------------------------------------------
+- Firmware oficial do Multilaser M7s Dual Core (ML01-M7-SD), Android 4.4.2 build 140403:
+  kernel, boot, recovery, system, loader e demais partições são da Multilaser / Rockchip /
+  respectivos titulares (inclui componentes do AOSP sob Apache-2.0/GPL e blobs proprietários
+  como o driver rknand, Mali e Wi-Fi). O build lê uma cópia que o próprio usuário fornece;
+  as imagens em out/ são derivadas dela e são para uso pessoal — não publique out/.
+- APKs baixados pelo build, cada um sob sua própria licença:
+    Simple Keyboard (rkr.simplekeyboard.inputmethod) ...... Apache-2.0
+    KISS launcher (fr.neamar.kiss) ......................... GPL-3.0
+    Firefox 68 ESR (opcional, FIREFOX=1) ................... MPL-2.0 (marca Firefox é da Mozilla)
+    Bromite 81 (org.bromite.bromite) ....................... GPL-3.0 (patches) sobre Chromium BSD-3-Clause
+    SkyTube (free.rm.skytube.oss) .......................... GPL-3.0
+    F-Droid (org.fdroid.fdroid) ............................ GPL-3.0-or-later
+    Ameixa (org.xphnx.ameixa) .............................. licença livre (ver f-droid.org/packages/org.xphnx.ameixa)
+    Little File Explorer (com.martinmimigames.simplefileexplorer) .. GPL-3.0-only
+    My Notes (com.aa.mynotes) .............................. GPL-3.0-only
+    Document Viewer (org.sufficientlysecure.viewer) ........ GPL-3.0-only (MuPDF/DjVuLibre embutidos)
+    Xposed Installer 2.7 exp1 + framework (opcional, XPOSED=1) .. Apache-2.0 (rovo89)
+    GravityBox [KK] 3.6.2 (opcional, XPOSED=1) ............. Apache-2.0 (C3C0)
+    BravePipe (legacy KitKat) .............................. GPL-3.0
+    VLC (org.videolan.vlc) ................................. GPL-2.0-or-later
+    Open Camera (net.sourceforge.opencamera) ............... GPL-3.0
+    Jogos (JOGOS=1): Simon Tatham's Puzzles (MIT), 2048 (MIT), Frozen Bubble (GPL-2.0),
+      OpenSudoku (GPL-3.0), Simple Solitaire (GPL-3.0), Chess (GPL-3.0 / jwtc), Blockinger
+      (GPL-3.0), Klooni 1010! (GPL-3.0) — cada um conforme a página do pacote no F-Droid
+- APKs locais (compilados de repositórios próprios, MIT): Taleszin Home (github.com/taleszin/taleszin-home),
+  Diagnóstico (github.com/taleszin/taleszin-diagnostico), tema Xposed (github.com/taleszin/taleszin-tema).
+- APK local (não baixado, não versionado aqui): Prancheta do Taleszin (app.mamba.prancheta), do
+  repositório mamba-prancheta do dono; sha256 fixo em config/apks.txt.
+- Fontes baixadas pelo build (o texto da licença vai junto em /system/etc/m7s/licenses/):
+    Roboto 3.016 (googlefonts/roboto-3-classic) ............ SIL OFL 1.1
+    Google Sans Flex 5.000 (opcional, FONTS=googlesans) .... SIL OFL 1.1, sem nomes reservados;
+      as instâncias geradas são renomeadas para "M7s Sans" (as marcas "Google Sans" ficam com a
+      fonte original, conforme TRADEMARKS.txt do projeto)
+    fontTools 4.68.0 (só no build, para FONTS=googlesans) .. MIT
+- Papel de parede (meia quadra) e bootanimation (bola de basquete): gerados pelo scripts/lib/art.py deste repositório (MIT).
+- Dados de fuso horário: IANA tz database (tzdata/tzcode 2026f), domínio público.
+- overlay/system/etc/security/cacerts/6187b673.0: certificado raiz ISRG Root X1, publicado
+  pelo Internet Security Research Group para distribuição em repositórios de confiança.
+
+Algoritmos de terceiros reimplementados
+---------------------------------------
+- Formatos RKFW/RKAF e CRC da Rockchip: reimplementados a partir da documentação pública e do
+  rkflashtool (BSD-2-Clause, Fukaumi Naoki / Ivo van Poorten); nenhum código copiado.
+- Formato tzdata do bionic 4.4: mesmo layout do ZoneCompactor.java do AOSP (Apache-2.0); sem
+  código copiado.
+
+Marcas
+------
+Multilaser, Rockchip, Android, Google, Google Sans, Roboto e Firefox são marcas de seus titulares. Este projeto não é
+afiliado a nenhum deles.

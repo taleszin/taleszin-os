@@ -1,0 +1,84 @@
+#!/system/bin/sh
+umask 022   # telemetria legível por apps (ex.: Diagnóstico); nada sensível aqui
+# m7s-telemetry — registrador leve de saúde/uso para o Multilaser M7s (RK3026, Android 4.4)
+# Amostra a cada $INT s (só leituras de /proc e /sys; dumpsys só com tela acesa).
+# Saída: /data/m7s-telemetry/ (não depende do /sdcard, que some quando o USB vira pendrive)
+# Antes: /sdcard/m7s-telemetry/YYYY-MM-DD.csv  (+ events-*.log, snap-*.txt)
+# Lacunas no "ts" com uptime parado = aparelho em sono profundo (bom sinal de bateria).
+
+INT=${M7S_TELEMETRY_INTERVAL:-30}
+SNAP_EVERY=${M7S_TELEMETRY_SNAP:-1800}
+DIR=/data/m7s-telemetry
+BB=/system/bin/busybox
+PIDF=/data/local/tmp/m7s-telemetry.pid
+EVTAGS="am_crash:* am_anr:* am_low_memory:* am_kill:* am_proc_died:* am_proc_start:* am_wtf:* power_screen_state:* battery_level:* am_resume_activity:*"
+
+mkdir -p $DIR; chmod 755 $DIR; chmod 644 $DIR/* 2>/dev/null
+
+# instância única
+if [ -f $PIDF ] && kill -0 "$(cat $PIDF)" 2>/dev/null; then exit 0; fi
+echo $$ > $PIDF
+
+HDR="ts,uptime_s,batt_pct,batt_mv,batt_status,usb,ac,backlight,cpu_khz,cpu1_on,cpu_busy_pct,iowait_pct,load1,mem_free_kb,mem_cached_kb,swap_used_kb,procs,wlan_rx_b,wlan_tx_b,nand_rd_sect,nand_wr_sect,ctxt_delta,fg_app"
+
+rd() { cat "$1" 2>/dev/null; }
+
+cpu_stat() { $BB awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5, $6} /^ctxt/{print $2}' /proc/stat | $BB tr '\n' ' '; }
+
+# eventos do sistema (crash, ANR, morte por memória, início de processo) em fluxo
+( logcat -b events -v time -s $EVTAGS 2>/dev/null >> $DIR/events-$(date +%Y-%m-%d).log ) &
+LOGPID=$!
+
+set -- $(cpu_stat); PT=$1; PI=$2; PW=$3; PC=$4
+LAST_SNAP=0
+
+while true; do
+  sleep $INT
+  NOW=$($BB date +%s)
+  DAY=$(date +%Y-%m-%d)
+  F=$DIR/$DAY.csv
+  [ -f $F ] || echo "$HDR" > $F
+
+  set -- $(cpu_stat); T=$1; I=$2; W=$3; C=$4
+  DT=$((T-PT)); [ $DT -le 0 ] && DT=1
+  BUSY=$(( (100*(DT-(I-PI)-(W-PW))) / DT ))
+  IOW=$(( (100*(W-PW)) / DT ))
+  CTX=$((C-PC)); PT=$T; PI=$I; PW=$W; PC=$C
+
+  UP=$($BB awk '{printf "%d",$1}' /proc/uptime)
+  BL=$(rd /sys/class/backlight/rk28_bl/brightness)
+  MEM=$($BB awk '/^MemFree/{f=$2}/^Cached/{c=$2}/^SwapTotal/{st=$2}/^SwapFree/{sf=$2}END{print f","c","st-sf}' /proc/meminfo)
+  NET=$($BB awk '/wlan0/{sub(/.*:/,"");print $1","$9}' /proc/net/dev); [ -z "$NET" ] && NET="0,0"
+  NAND=$($BB awk '$3=="mtdblock6"||$3=="mtdblock8"||$3=="mtdblock9"{r+=$6;w+=$10}END{print r","w}' /proc/diskstats)
+  PROCS=$(ls -d /proc/[0-9]* 2>/dev/null | $BB wc -l)
+  LOAD=$($BB cut -d' ' -f1 /proc/loadavg)
+
+  FG=""
+  if [ "${BL:-0}" -gt 0 ]; then
+    FG=$(dumpsys window windows 2>/dev/null | $BB awk -F'[ /}]' '/mCurrentFocus/{for(i=1;i<=NF;i++) if($i ~ /\./){print $i; exit}}')
+  fi
+
+  echo "$NOW,$UP,$(rd /sys/class/power_supply/battery/capacity),$(( $(rd /sys/class/power_supply/battery/voltage_now) / 1000 )),$(rd /sys/class/power_supply/battery/status),$(rd /sys/class/power_supply/usb/online),$(rd /sys/class/power_supply/ac/online),$BL,$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq),$(rd /sys/devices/system/cpu/cpu1/online),$BUSY,$IOW,$LOAD,$MEM,$PROCS,$NET,$NAND,$CTX,$FG" >> $F
+
+  # retrato detalhado periódico (mais caro, raro)
+  if [ $((NOW-LAST_SNAP)) -ge $SNAP_EVERY ]; then
+    LAST_SNAP=$NOW
+    S=$DIR/snap-$DAY.txt
+    {
+      echo "===== $(date '+%Y-%m-%d %H:%M:%S') uptime=${UP}s"
+      echo "-- cpufreq time_in_state (10ms)"; rd /sys/devices/system/cpu/cpu0/cpufreq/stats/time_in_state
+      echo "-- wakelocks (top por tempo)"; $BB awk 'NR>1{print $6, $1}' /proc/wakelocks 2>/dev/null | $BB sort -rn | $BB head -12
+      echo "-- zram"; cat /proc/swaps; rd /sys/block/zram0/orig_data_size; rd /sys/block/zram0/compr_data_size
+      echo "-- ksm"; rd /sys/kernel/mm/ksm/pages_sharing
+      echo "-- memória por processo (PSS)"; dumpsys meminfo 2>/dev/null | $BB sed -n '/Total PSS by process/,/^$/p' | $BB head -15
+      echo "-- top CPU"; top -n 1 -m 8 2>/dev/null
+      echo "-- df"; df /data /system /sdcard
+    } >> $S 2>&1
+  fi
+
+  # rotação: se o logcat morreu (troca de dia/arquivo), reinicia
+  kill -0 $LOGPID 2>/dev/null || { ( logcat -b events -v time -s $EVTAGS 2>/dev/null >> $DIR/events-$DAY.log ) & LOGPID=$!; }
+
+  # mantém no máximo ~30 dias
+  ls $DIR/*.csv 2>/dev/null | $BB sort -r | $BB awk 'NR>30' | while read old; do rm -f "$old"; done
+done
