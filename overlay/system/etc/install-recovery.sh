@@ -55,6 +55,9 @@ I=/sys/devices/system/cpu/cpufreq/interactive
 # scaling_max_freq legível por apps (o app Diagnóstico mostra o teto que o powerguard aplica)
 chmod 0664 /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq /sys/devices/system/cpu/cpu*/cpufreq/scaling_min_freq 2>/dev/null
 
+# Xposed sob SELinux: garante que o zygote consiga ler jar/módulos/prefs do GravityBox (ver o script)
+[ -x /system/bin/m7s-xposed-selinux ] && /system/bin/m7s-xposed-selinux >/dev/null 2>&1
+
 # telemetria leve (desligar: touch /data/m7s-telemetry.off)
 [ "$TELEMETRY" = 1 ] && [ -x /system/bin/m7s-telemetry ] && [ ! -f /data/m7s-telemetry.off ] && \
   $BB setsid /system/bin/m7s-telemetry </dev/null >/dev/null 2>&1 &

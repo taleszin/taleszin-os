@@ -190,6 +190,15 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.4.1 — 2026-11-14
+- Correção: numa gravação limpa o Xposed não carregava (barra de navegação e tema voltavam ao
+  KitKat). O zygote roda com SELinux enforcing e tem `search/read` negado em `app_data_file`
+  (`avc: denied … tcontext=app_data_file`), então não lia o XposedBridge.jar, a modules.list nem as
+  prefs do GravityBox. Novo `m7s-xposed-selinux` rotula só esses caminhos como
+  `dalvikcache_data_file`; roda no 1º boot e a cada boot (idempotente). Na 1.3 tinha passado
+  despercebido porque o Xposed foi montado à mão.
+- Aviso: `flash-mac.sh` grava o misc com `--wipe_all`, então o /data é apagado (faça backup da Prancheta).
+
 ### 1.4.0 — 2026-11-14 ("Taleszin OS")
 - Nome próprio: `ro.build.display.id=Taleszin OS 1.4.0` (Sobre o tablet), `ro.taleszin.name/version/base`.
 - Animação de boot autoral: bola de basquete com arco laranja girando (art.py).

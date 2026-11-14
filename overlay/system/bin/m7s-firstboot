@@ -144,6 +144,7 @@ if [ "$XPOSED" = 1 ] && [ -f /system/etc/m7s/XposedBridge.jar ]; then
         'boolean|pref_gb_theme_dark|true'
     fi
     echo "xposed: jar + modules.list ($gb)" >>$LOG
+    /system/bin/m7s-xposed-selinux >>$LOG 2>&1   # SELinux: zygote precisa ler jar, módulos e prefs do GB
     [ "$XPOSED_REBOOT" = 1 ] && reboot_now=1
   else ok=0; echo "FALHOU xposed: $XI ou GravityBox ausente" >>$LOG; fi
 fi
