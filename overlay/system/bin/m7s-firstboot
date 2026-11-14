@@ -141,7 +141,8 @@ if [ "$XPOSED" = 1 ] && [ -f /system/etc/m7s/XposedBridge.jar ]; then
         'boolean|pref_heads_up_master_switch|true' 'string|pref_heads_up_position|48' \
         'string|pref_recents_clear_all2|85' 'string|pref_rambar|80' \
         'boolean|pref_statusbar_brightness|true' 'boolean|pref_volume_panel_expandable|true' \
-        'boolean|pref_gb_theme_dark|true'
+        'boolean|pref_gb_theme_dark|true' \
+        'string|pref_translucent_decor|1' 'string|pref_qs_tile_label_style|NORMAL'
     fi
     echo "xposed: jar + modules.list ($gb)" >>$LOG
     /system/bin/m7s-xposed-selinux >>$LOG 2>&1   # SELinux: zygote precisa ler jar, módulos e prefs do GB

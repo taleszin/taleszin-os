@@ -16,6 +16,7 @@ O que NÃO está neste repositório e não é redistribuído
     Simple Keyboard (rkr.simplekeyboard.inputmethod) ...... Apache-2.0
     KISS launcher (fr.neamar.kiss) ......................... GPL-3.0
     Firefox 68 ESR (opcional, FIREFOX=1) ................... MPL-2.0 (marca Firefox é da Mozilla)
+    SmartCookieWeb 16.3 (com.cookiegames.smartcookie) ..... MPL-2.0
     Bromite 81 (org.bromite.bromite) ....................... GPL-3.0 (patches) sobre Chromium BSD-3-Clause
     SkyTube (free.rm.skytube.oss) .......................... GPL-3.0
     F-Droid (org.fdroid.fdroid) ............................ GPL-3.0-or-later

@@ -31,10 +31,12 @@
 /system/preinstall/VLC.apk                e8ff40c4a1ebc377ec32e22aec69b617c5b25677c1b4735c06b96322257f1aa8  https://f-droid.org/repo/org.videolan.vlc_13070205.apk  EXTRA_APPS=1
 /system/preinstall/OpenCamera.apk         3b58721af4a79f42f5e6f6832a998493719b519f0d65d942d15a9593845049e4  https://f-droid.org/archive/net.sourceforge.opencamera_90.apk  EXTRA_APPS=1
 /system/app/TaleszinHome.apk              bd5fae865aa99c30678c03ba716b198ac5a35b7eda96b0668d1d2bca15d8a447  local:TALESZIN_HOME_APK  HOME_LAUNCHER=taleszin
-/system/preinstall/M7sTema.apk            74f78566d00b23f0a2eed17e43f108ac7e4baa2c0bed77806129b18ad12582f0  local:TEMA_APK  TEMA=1
+/system/preinstall/M7sTema.apk            589faf2b603d5c38aa061adb0d202ad9793656c609302c1d34aea6501847905f  local:TEMA_APK  TEMA=1
 /system/app/Diagnostico.apk              4f509e3f9ef8fdc875be5a628ed3656510b181e4262274de466f4540ba4c2b39  local:DIAGNOSTICO_APK  DIAGNOSTICO=1
 # v1.4: Bromite = Chromium 81 com bloqueio de anúncios (último build com minSdk 19); lê JS moderno (?., ??) que o Firefox 68 não lê
 /system/preinstall/Bromite.apk           92dfd3aa0b0faba4f985f012f7583985625d389972140ef83423a329b34b8522  https://github.com/bromite/bromite/releases/download/81.0.4044.127/arm_ChromePublic.apk  BROMITE=1
+# v1.5: navegador leve (WebView do sistema, Chromium 30): abre rápido páginas simples; site moderno → Bromite
+/system/preinstall/SmartCookieWeb.apk    32adeedba1875a0fd4daef7429aadbce8bd3242ec811d51fc7f6160a2070d5a5  https://f-droid.org/repo/com.cookiegames.smartcookie_152.apk  NAVEGADOR_LEVE=1
 # v1.4: jogos leves e livres (F-Droid), todos minSdk <= 19; preinstall = desinstaláveis
 /system/preinstall/Puzzles.apk               afefba545fa538c7ef8058bb3adf8b9a2882ad4c901c82f8d1069d6b2beeb644  https://f-droid.org/archive/name.boyle.chris.sgtpuzzles_138.apk  JOGOS=1
 /system/preinstall/Jogo2048.apk              7c66ccdf3d1fb9fd18d2a088f34bde4069c1107e4fc4b787b18012d7021df17f  https://f-droid.org/archive/com.uberspot.a2048_25.apk  JOGOS=1

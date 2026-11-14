@@ -190,6 +190,18 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.5.0 — 2026-11-14 (linguagem visual)
+- Taleszin Tema desenha os componentes (tools/material.py), em vez de só recolorir: caixas de
+  marcar e rádios arredondados, interruptor em pílula sem o texto LIGADO/DESLIGADO (hook no Switch),
+  janelas com cantos de 16dp e menus com 12dp, toast em pílula, notificações em cartões, painel
+  grafite liso e blocos arredondados nas configurações rápidas.
+- GravityBox: barras translúcidas forçadas (`pref_translucent_decor=1`), ícones de sinal lisos,
+  rótulos dos atalhos sem caixa alta.
+- SmartCookieWeb 16.3 como navegador leve (`NAVEGADOR_LEVE=1`). Usa o WebView do sistema
+  (Chromium 30, não atualizável no 4.4): bom para páginas simples; sites modernos continuam no
+  Bromite. Os únicos livres com motor próprio e minSdk 19 são o Bromite 81 e o Gecko 68
+  (Firefox/IceCat), ver pesquisa no histórico do projeto.
+
 ### 1.4.2 — 2026-11-14 (correções da telemetria)
 - Telemetria e powerguard podiam não subir no boot: o .pid sobrevive ao reboot e o número era de
   outro processo (surfaceflinger), então o script achava que já estava rodando e saía. Agora confere
