@@ -24,6 +24,13 @@ echo $$ > $PIDF
 HDR="ts,uptime_s,batt_pct,batt_mv,batt_status,usb,ac,backlight,cpu_khz,cpu1_on,cpu_busy_pct,iowait_pct,load1,mem_free_kb,mem_cached_kb,swap_used_kb,procs,wlan_rx_b,wlan_tx_b,nand_rd_sect,nand_wr_sect,ctxt_delta,fg_app"
 
 rd() { cat "$1" 2>/dev/null; }
+# batt_mv ao vivo (v1.5.1): voltage_now congela entre degraus de % — ver m7s-powerguard
+BI=/sys/devices/platform/rk30-battery/batinfo
+mv_vivo() {
+  a=$($BB sed -n 's/.*cur adc value=\([0-9]*\).*/\1/p' $BI 2>/dev/null)
+  if [ -n "$a" ] && [ "$a" -gt 300 ]; then echo $(( a * 6060 / 1000 ))
+  else uv=$(rd /sys/class/power_supply/battery/voltage_now); echo $(( ${uv:-0} / 1000 )); fi
+}
 
 cpu_stat() { $BB awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5, $6} /^ctxt/{print $2}' /proc/stat | $BB tr '\n' ' '; }
 
@@ -60,7 +67,10 @@ while true; do
     FG=$(dumpsys window windows 2>/dev/null | $BB awk -F'[ /}]' '/mCurrentFocus/{for(i=1;i<=NF;i++) if($i ~ /\./){print $i; exit}}')
   fi
 
-  echo "$NOW,$UP,$(rd /sys/class/power_supply/battery/capacity),$(( $(rd /sys/class/power_supply/battery/voltage_now) / 1000 )),$(rd /sys/class/power_supply/battery/status),$(rd /sys/class/power_supply/usb/online),$(rd /sys/class/power_supply/ac/online),$BL,$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq),$(rd /sys/devices/system/cpu/cpu1/online),$BUSY,$IOW,$LOAD,$MEM,$PROCS,$NET,$NAND,$CTX,$FG" >> $F
+  echo "$NOW,$UP,$(rd /sys/class/power_supply/battery/capacity),$(mv_vivo),$(rd /sys/class/power_supply/battery/status),$(rd /sys/class/power_supply/usb/online),$(rd /sys/class/power_supply/ac/online),$BL,$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq),$(rd /sys/devices/system/cpu/cpu1/online),$BUSY,$IOW,$LOAD,$MEM,$PROCS,$NET,$NAND,$CTX,$FG" >> $F
+  # na bateria o aparelho pode apagar a qualquer instante: sem sync as últimas linhas ficavam no
+  # cache do driver da NAND e se perdiam (14/11: nenhuma linha com usb=0 antes dos apagões)
+  [ "$(rd /sys/class/power_supply/usb/online)$(rd /sys/class/power_supply/ac/online)" = 00 ] && sync
 
   # retrato detalhado periódico (mais caro, raro)
   if [ $((NOW-LAST_SNAP)) -ge $SNAP_EVERY ]; then

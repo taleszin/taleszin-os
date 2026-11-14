@@ -197,7 +197,24 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 - Configurações: item ativo vira pílula laranja translúcida (antes bloco chapado); título de seção sem o
   sublinhado do Holo.
 - Notificações: some o quadrado azulado atrás do ícone (`notification_template_icon_bg`).
-- firstboot: caminho dos módulos Xposed cai no `packages.xml` quando o `pm path` volta vazio.
+- Cortina no padrão de celular: a tela de 480 dp caía no layout de tablet (sw480dp) — painel estreito
+  com margem, 40% de altura mínima (bloco preto vazio) e atalhos escondidos numa zona de arrasto.
+  Agora: largura total, altura do conteúdo, botão de atalhos no cabeçalho que vira o painel, alça em
+  pílula, ícones do cabeçalho redesenhados e grade 3x3 de atalhos de tablet Wi-Fi (Wi-Fi, brilho,
+  ajustes, rotação, bateria, avião, captura, volume, dormir).
+- Ícone de depuração USB: o "IIII" do firmware RK vira um terminal (`>_`).
+- **GravityBox e Xposed Installer sumiam do PackageManager** desde a 1.4.1: a pasta do pacote rotulada
+  `dalvikcache_data_file` impedia o installd de recriar o link `lib` ("missing metadata"), e o GB
+  perdia o próprio contexto (atalhos sem gerência, app de ajustes ausente, `pm path` vazio). A pasta de
+  cima agora é `system_data_file`; só `bin/conf/shared_prefs` ficam `dalvikcache_data_file`.
+- **Tensão ao vivo**: o `rk30_adc_battery` só reescreve `voltage_now` quando o % muda — o degrau de
+  afundamento e o corte nunca viam a queda. Powerguard, telemetria e Diagnóstico (1.1) leem o
+  `cur adc value` do `batinfo` (6,06 mV/unidade, calibrado com os pares que o kernel loga).
+- Powerguard mede a cada 10 s na bateria (era 25 s; o tablet apagou segundos depois de desplugar com
+  o Bromite a 90%). Telemetria faz `sync` a cada linha na bateria (antes nenhuma linha com usb=0
+  sobrevivia aos apagões).
+- firstboot: caminho dos módulos Xposed cai no `packages.xml` quando o `pm path` volta vazio;
+  `setprefs` aceita `set|nome|a,b,c`.
 
 ### 1.5.0 — 2026-11-14 (linguagem visual)
 - Taleszin Tema desenha os componentes (tools/material.py), em vez de só recolorir: caixas de

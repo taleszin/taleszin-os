@@ -21,6 +21,9 @@ PG_INTERVAL=25; PG_CONFIRM=2; PG_CONFIRM_S=5; PG_GRACE_S=120
 # 3,78 → 3,63 V em 1 min, entre duas leituras. Abaixo de PG_SAG_MV desce para PG_SAG_KHZ e mede a
 # cada PG_SAG_S s; volta ao teto normal só acima de PG_SAG_OK_MV (histerese contra vai-e-volta).
 PG_SAG_MV=3800; PG_SAG_OK_MV=3880; PG_SAG_KHZ=504000; PG_SAG_S=5
+# v1.5.1: na bateria mede a cada PG_BATT_S s (14/11 14:06 apagou segundos depois de desplugar, com
+# Bromite a 90% — o laço de 25 s nem chegou a ver a bateria). Ler o batinfo custa ~nada.
+PG_BATT_S=10
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
 PG_EXT_MAX_KHZ=${PG_EXT_MAX_KHZ:-$CPU_MAX_KHZ}
 [ "$POWERGUARD" = 1 ] || exit 0
@@ -41,6 +44,17 @@ if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-powerguard /proc/$op/cmdli
 echo $$ > $PIDF
 
 rd() { cat "$1" 2>/dev/null; }
+# tensão AO VIVO (v1.5.1): o rk30_adc_battery só reescreve voltage_now quando o % muda — entre um
+# degrau e outro o valor fica congelado (14/11: 3863 mV parados por 7 min) e o degrau/corte nunca
+# viam o afundamento. O "cur adc value" do batinfo é amostrado pelo driver a cada segundo; a escala
+# 6,06 mV/unidade foi ajustada com 5 pares (voltage, adc) que o próprio kernel loga no dmesg
+# (3863/643 … 4119/679). Sem batinfo, cai no voltage_now.
+BI=/sys/devices/platform/rk30-battery/batinfo
+mv_vivo() {
+  a=$($BB sed -n 's/.*cur adc value=\([0-9]*\).*/\1/p' $BI 2>/dev/null)
+  if [ -n "$a" ] && [ "$a" -gt 300 ]; then echo $(( a * 6060 / 1000 ))
+  else uv=$(rd $PS/battery/voltage_now); echo $(( ${uv:-0} / 1000 )); fi
+}
 up() { $BB awk '{printf "%d",$1}' /proc/uptime; }
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') up=$(up) $*" >> $LOG; }
 
@@ -51,13 +65,13 @@ log "início: corte=${PG_CUTOFF_MV}mV x$PG_CONFIRM, bateria=${PG_BATT_MAX_KHZ}kH
 mode=""; low=0; sag=0
 while true; do
   usb=$(rd $PS/usb/online); ac=$(rd $PS/ac/online)
-  uv=$(rd $PS/battery/voltage_now); mv=$(( ${uv:-0} / 1000 ))
+  mv=$(mv_vivo)
   pct=$(rd $PS/battery/capacity)
   if [ "$usb" = 1 ] || [ "$ac" = 1 ]; then m=tomada; want=$PG_EXT_MAX_KHZ; sag=0
   else
     m=bateria; want=$PG_BATT_MAX_KHZ
     if [ $mv -gt 0 ] && [ $mv -lt $PG_SAG_MV ]; then
-      [ "$sag" = 1 ] || log "afundou ${mv}mV ${pct}%: teto ${PG_SAG_KHZ}kHz"
+      [ "$sag" = 1 ] || { log "afundou ${mv}mV ${pct}%: teto ${PG_SAG_KHZ}kHz"; sync; }
       sag=1
     elif [ "$sag" = 1 ] && [ $mv -ge $PG_SAG_OK_MV ]; then
       log "recuperou ${mv}mV: teto ${PG_BATT_MAX_KHZ}kHz"; sag=0
@@ -92,5 +106,6 @@ while true; do
 
   if [ $low -gt 0 ]; then sleep $PG_CONFIRM_S
   elif [ "$sag" = 1 ]; then sleep $PG_SAG_S
+  elif [ $m = bateria ]; then sleep $PG_BATT_S
   else sleep $PG_INTERVAL; fi
 done

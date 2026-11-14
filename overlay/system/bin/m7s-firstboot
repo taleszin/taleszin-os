@@ -63,13 +63,21 @@ setprefs() {
   # (o mksh do 4.4 não tem printf)
   [ -f $x ] || echo "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>" > $x
   args=""
-  for e in "$@"; do n=${e#*"|"}; n=${n%%"|"*}; args="$args -e 'name=\"$n\"'"; done
+  for e in "$@"; do
+    n=${e#*"|"}; n=${n%%"|"*}; args="$args -e 'name=\"$n\"'"
+    # set (lista de strings): some o bloco <set>…</set> inteiro, não só a linha de abertura
+    [ "${e%%"|"*}" = set ] && $BB sed -i "/<set name=\"$n\">/,/<\/set>/d" $x
+  done
   # (as entradas "< name=..." vêm de uma versão antiga com bug de expansão no mksh: descarta)
   eval "$BB grep -v $args -e '</map>' -e '<map/>' -e '<map />' -e '^ *< name=' $x" > $t
   $BB grep -q '<map>' $t || echo '<map>' >> $t
   for e in "$@"; do
     ty=${e%%"|"*}; r=${e#*"|"}; n=${r%%"|"*}; v=${r#*"|"}
     if [ $ty = string ]; then echo "    <string name=\"$n\">$v</string>" >> $t
+    elif [ $ty = set ]; then
+      echo "    <set name=\"$n\">" >> $t
+      for i in $(echo "$v" | $BB tr ',' ' '); do echo "        <string>$i</string>" >> $t; done
+      echo "    </set>" >> $t
     else echo "    <$ty name=\"$n\" value=\"$v\" />" >> $t; fi
   done
   echo '</map>' >> $t
@@ -149,6 +157,13 @@ if [ "$XPOSED" = 1 ] && [ -f /system/etc/m7s/XposedBridge.jar ]; then
         'boolean|pref_statusbar_brightness|true' 'boolean|pref_volume_panel_expandable|true' \
         'boolean|pref_gb_theme_dark|true' \
         'string|pref_translucent_decor|1' 'string|pref_qs_tile_label_style|NORMAL'
+      # atalhos rápidos (v1.5.1): grade 3x3 do que um tablet Wi-Fi usa — sem "Proprietário",
+      # sinal de celular, 3G/2G, ponto de acesso, sincronização e modo de toque
+      qs=wifi_textview,brightness_textview,settings,auto_rotate_textview,battery_textview
+      qs=$qs,airplane_mode_textview,screenshot_tileview,volume_tileview,sleep_tileview
+      setprefs com.ceco.kitkat.gravitybox com.ceco.kitkat.gravitybox_preferences.xml 664 \
+        'boolean|pref_qs_management_enable|true' "set|pref_quick_settings2|$qs" \
+        "string|pref_qs_tile_order|$qs"
     fi
     echo "xposed: jar + modules.list ($gb)" >>$LOG
     /system/bin/m7s-xposed-selinux >>$LOG 2>&1   # SELinux: zygote precisa ler jar, módulos e prefs do GB

@@ -3,24 +3,34 @@
 # app_data_file. Por isso, numa instalação limpa, o Xposed não lê o XposedBridge.jar nem a
 # conf/modules.list, e o GravityBox não lê as próprias prefs no initZygote. Sintoma: barra de
 # navegação antiga e "could not access Xposed jar" no logcat (avc denied … tcontext=app_data_file).
-# Correção: rotula só esses caminhos como dalvikcache_data_file, que o zygote pode ler. Apps comuns
-# (untrusted_app) são permissivos no 4.4 e continuam acessando os próprios dados.
-# O shell não tem "relabelto" para esse tipo; o SELinux fica permissivo só durante o chcon.
+# Correção: os arquivos e subpastas que o zygote lê viram dalvikcache_data_file (o zygote lê).
+# A PASTA DE CIMA do pacote vira system_data_file (v1.5.1): o zygote atravessa, e o installd
+# consegue recriar nela o link "lib" a cada boot. Com dalvikcache ali (1.4.1–1.5.0) o installd levava
+# "denied { create } lnk_file", o PackageManager descartava o pacote ("missing metadata") e o
+# GravityBox perdia o próprio contexto: atalhos rápidos sem gerência, app de ajustes sumido, `pm path`
+# vazio. Apps comuns (untrusted_app) são permissivos no 4.4 e continuam acessando os próprios dados.
+# O shell não tem "relabelto" para esses tipos; o SELinux fica permissivo só durante o chcon.
 # Idempotente: roda no 1º boot (m7s-firstboot) e a cada boot (install-recovery.sh).
 L=u:object_r:dalvikcache_data_file:s0
+TOP=u:object_r:system_data_file:s0
 XI=/data/data/de.robv.android.xposed.installer
 GB=/data/data/com.ceco.kitkat.gravitybox
-set -- $XI $XI/bin $XI/bin/XposedBridge.jar $XI/conf $XI/conf/modules.list \
-       $GB $GB/shared_prefs $GB/shared_prefs/com.ceco.kitkat.gravitybox_preferences.xml
+DENTRO="$XI/bin $XI/bin/XposedBridge.jar $XI/conf $XI/conf/modules.list
+        $GB/shared_prefs $GB/shared_prefs/com.ceco.kitkat.gravitybox_preferences.xml"
 need=0
-for p in "$@"; do
+for p in $XI $GB; do
+  [ -e "$p" ] || continue
+  case "$(ls -dZ "$p" 2>/dev/null)" in *system_data_file*) ;; *) need=1 ;; esac
+done
+for p in $DENTRO; do
   [ -e "$p" ] || continue
   case "$(ls -dZ "$p" 2>/dev/null)" in *dalvikcache_data_file*) ;; *) need=1 ;; esac
 done
 [ $need = 0 ] && exit 0
 was=$(getenforce 2>/dev/null)
 [ "$was" = Enforcing ] && setenforce 0
-for p in "$@"; do [ -e "$p" ] && chcon $L "$p"; done
+for p in $XI $GB; do [ -e "$p" ] && chcon $TOP "$p"; done
+for p in $DENTRO; do [ -e "$p" ] && chcon $L "$p"; done
 [ "$was" = Enforcing ] && setenforce 1
 echo "relabel ok ($was)"
 exit 1   # 1 = rotulou agora (vale a partir do próximo início do zygote)
