@@ -190,6 +190,15 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.5.1 — 2026-11-14 (acabamento visual)
+- Barras de status e de navegação translúcidas de verdade: o `low_ram` desligava a transição do KitKat
+  (`ActivityManager.isHighEndGfx()`); o tema responde "sim" só dentro do construtor do `BarTransitions`
+  da SystemUI — sem aceleração por GPU nas janelas, o resto continua econômico.
+- Configurações: item ativo vira pílula laranja translúcida (antes bloco chapado); título de seção sem o
+  sublinhado do Holo.
+- Notificações: some o quadrado azulado atrás do ícone (`notification_template_icon_bg`).
+- firstboot: caminho dos módulos Xposed cai no `packages.xml` quando o `pm path` volta vazio.
+
 ### 1.5.0 — 2026-11-14 (linguagem visual)
 - Taleszin Tema desenha os componentes (tools/material.py), em vez de só recolorir: caixas de
   marcar e rádios arredondados, interruptor em pílula sem o texto LIGADO/DESLIGADO (hook no Switch),

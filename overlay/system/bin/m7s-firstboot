@@ -111,15 +111,21 @@ fi
 # Xposed: o app_process já está no /system; falta o XposedBridge.jar no /data do Installer
 # (caminho fixo no binário) e a lista de módulos. Ativa no próximo boot.
 reboot_now=0
+# caminho do APK: `pm path` às vezes volta vazio (visto via adb em 14/11) → cai no packages.xml
+apk_de() {
+  p=$(pm path $1 2>/dev/null | $BB sed -n 's/^package://p')
+  [ -z "$p" ] && p=$($BB sed -n "s/.*<package name=\"$1\" codePath=\"\([^\"]*\)\".*/\1/p" /data/system/packages.xml 2>/dev/null | $BB head -1)
+  echo "$p"
+}
 if [ "$XPOSED" = 1 ] && [ -f /system/etc/m7s/XposedBridge.jar ]; then
   XI=/data/data/de.robv.android.xposed.installer
-  gb=$(pm path com.ceco.kitkat.gravitybox 2>/dev/null | $BB sed -n 's/^package://p')
+  gb=$(apk_de com.ceco.kitkat.gravitybox)
   if [ -d $XI ] && [ -n "$gb" ]; then
     xu=$($BB stat -c %u $XI)
     mkdir -p $XI/bin $XI/conf
     cp /system/etc/m7s/XposedBridge.jar $XI/bin/XposedBridge.jar
     echo "$gb" > $XI/conf/modules.list
-    tema=$(pm path com.m7s.tema 2>/dev/null | $BB sed -n 's/^package://p')
+    tema=$(apk_de com.m7s.tema)
     [ -n "$tema" ] && echo "$tema" >> $XI/conf/modules.list
     chown $xu:$xu $XI/bin $XI/conf $XI/bin/XposedBridge.jar $XI/conf/modules.list
     chmod 771 $XI/bin $XI/conf; chmod 644 $XI/bin/XposedBridge.jar; chmod 664 $XI/conf/modules.list
