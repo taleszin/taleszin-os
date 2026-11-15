@@ -4,26 +4,34 @@ umask 022   # telemetria legível por apps (ex.: Diagnóstico); nada sensível a
 # 3,80 V logo ao desplugar com 100%, 99%→1% em ~50 min, desligamentos súbitos com Firefox a
 # 81–94% de CPU em 3,66 V e 3,38 V; o gauge rk30-battery é por tensão e mostrou 35% a 3,38 V).
 #
-# Só lê sysfs e escreve 1 nó de cpufreq. A cada PG_INTERVAL s:
-#   - fora da tomada (usb=0 e ac=0): scaling_max_freq = PG_BATT_MAX_KHZ (816 MHz) — corta os picos
-#     de corrente do degrau de 1008 MHz, que derrubam a tensão da bateria velha;
-#   - na tomada: scaling_max_freq = PG_EXT_MAX_KHZ (o CPU_MAX_KHZ da ROM);
-#   - fora da tomada, depois de PG_GRACE_S s de uptime: se a tensão ficar < PG_CUTOFF_MV em
-#     PG_CONFIRM leituras seguidas (a confirmação é a cada PG_CONFIRM_S s), desliga limpo pelo
-#     framework (ShutdownActivity, sem perguntar) — o Android fecha apps e desmonta o /data antes de
-#     a bateria cair sozinha. Se em 60 s ainda estiver de pé: sync + reboot -p.
+# Na tomada: teto PG_EXT_MAX_KHZ. Na bateria: teto PG_BATT_MAX_KHZ (816 MHz) e, conforme a tensão
+# ao vivo cai, a escada de economia descrita abaixo (economia → crítico → desligar limpo com aviso).
 # Não segura wakelock: em suspend o laço para junto com o resto (a CPU não gasta nada lá).
 # Log: /data/m7s-telemetry/powerguard.log; estado atual: /data/m7s-telemetry/powerguard.state.
 # Desligar: touch /data/m7s-powerguard.off (e reiniciar), ou POWERGUARD=0 no build.
-POWERGUARD=1; PG_CUTOFF_MV=3480; PG_BATT_MAX_KHZ=816000; CPU_MAX_KHZ=1008000
-PG_INTERVAL=25; PG_CONFIRM=2; PG_CONFIRM_S=5; PG_GRACE_S=120
-# degrau de afundamento (v1.4.2): 14/11 03:44 o tablet apagou com Bromite a 95% de CPU em 816 MHz,
-# 3,78 → 3,63 V em 1 min, entre duas leituras. Abaixo de PG_SAG_MV desce para PG_SAG_KHZ e mede a
-# cada PG_SAG_S s; volta ao teto normal só acima de PG_SAG_OK_MV (histerese contra vai-e-volta).
-PG_SAG_MV=3800; PG_SAG_OK_MV=3880; PG_SAG_KHZ=504000; PG_SAG_S=5
-# v1.5.1: na bateria mede a cada PG_BATT_S s (14/11 14:06 apagou segundos depois de desplugar, com
-# Bromite a 90% — o laço de 25 s nem chegou a ver a bateria). Ler o batinfo custa ~nada.
+POWERGUARD=1; PG_CUTOFF_MV=3400; PG_BATT_MAX_KHZ=816000; CPU_MAX_KHZ=1008000
+PG_INTERVAL=25; PG_CONFIRM=3; PG_CONFIRM_S=5; PG_GRACE_S=120
+# v1.5.1: na bateria mede a cada PG_BATT_S s (14/11 14:06 apagou segundos depois de desplugar).
 PG_BATT_S=10
+# ESCADA DE ECONOMIA (v1.5.2). A 1.5.1, já com a tensão ao vivo, descia a CPU para 504 MHz em 3,80 V:
+# na bateria gasta isso é quase sempre (3,69 V a 73% com o Bromite) e o Bromite a 97% de CPU em
+# 504 MHz travava a tela (14/11 20:07 e 20:30, reinício forçado). E o corte em 3,48 V x2 desligou
+# com a tela dizendo 46%. Agora, em vez de desligar cedo, o guarda tira carga em degraus — cada
+# degrau só sobe com PG_STEP_CONFIRM medianas seguidas abaixo do limiar, e só volta ao normal
+# na tomada (a bateria velha "recupera" uns 0,2 V quando a carga cai, e isso não é carga de verdade):
+#   1 economia  (< PG_ECO_MV):  brilho no máximo PG_ECO_BRIGHT e fecha apps EM SEGUNDO PLANO
+#                               que estejam gastando > PG_HOG_PCT de CPU; aviso na tela.
+#   2 crítico   (< PG_CRIT_MV): CPU em PG_SAG_KHZ, brilho PG_CRIT_BRIGHT e fecha também o app da
+#                               FRENTE se ele for o comilão (> PG_HOG_FG_PCT) — volta ao início.
+#   3 desligar  (< PG_CUTOFF_MV em PG_CONFIRM leituras, e só PG_CRIT_HOLD_S s depois do crítico,
+#               para dar tempo de a tensão subir sem a carga): aviso com contagem de PG_COUNT_S s;
+#               plugar o carregador cancela. Abaixo disso a bateria cai sozinha (14/11 20:49 e
+#               20:50 morreu no boot a 3,45–3,48 V) e desligar limpo protege o /data.
+PG_ECO_MV=3600; PG_CRIT_MV=3480; PG_SAG_KHZ=504000; PG_STEP_CONFIRM=2; PG_SAG_S=5
+PG_ECO_BRIGHT=110; PG_CRIT_BRIGHT=60; PG_HOG_PCT=30; PG_HOG_FG_PCT=55
+PG_CRIT_HOLD_S=30; PG_COUNT_S=15
+# nunca fecha: tela inicial, barra, teclado, o próprio aviso
+PG_KEEP="app.taleszin.home com.android.systemui com.android.inputmethod app.taleszin.diagnostico com.ceco.kitkat.gravitybox de.robv.android.xposed.installer android.process system_server com.android.phone"
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
 PG_EXT_MAX_KHZ=${PG_EXT_MAX_KHZ:-$CPU_MAX_KHZ}
 [ "$POWERGUARD" = 1 ] || exit 0
@@ -45,38 +53,122 @@ echo $$ > $PIDF
 
 rd() { cat "$1" 2>/dev/null; }
 # tensão AO VIVO (v1.5.1): o rk30_adc_battery só reescreve voltage_now quando o % muda — entre um
-# degrau e outro o valor fica congelado (14/11: 3863 mV parados por 7 min) e o degrau/corte nunca
-# viam o afundamento. O "cur adc value" do batinfo é amostrado pelo driver a cada segundo; a escala
-# 6,06 mV/unidade foi ajustada com 5 pares (voltage, adc) que o próprio kernel loga no dmesg
-# (3863/643 … 4119/679). Sem batinfo, cai no voltage_now.
+# degrau e outro o valor fica congelado (14/11: 3863 mV parados por 7 min). O "cur adc value" do
+# batinfo é amostrado pelo driver a cada segundo; escala 6,06 mV/unidade ajustada com 5 pares
+# (voltage, adc) que o próprio kernel loga no dmesg (3863/643 … 4119/679). Sem batinfo: voltage_now.
 BI=/sys/devices/platform/rk30-battery/batinfo
-mv_vivo() {
+mv_um() {
   a=$($BB sed -n 's/.*cur adc value=\([0-9]*\).*/\1/p' $BI 2>/dev/null)
   if [ -n "$a" ] && [ "$a" -gt 300 ]; then echo $(( a * 6060 / 1000 ))
   else uv=$(rd $PS/battery/voltage_now); echo $(( ${uv:-0} / 1000 )); fi
 }
+# mediana de 3 leituras em ~2 s (v1.5.2): um pico de corrente isolado não sobe degrau
+mv_vivo() {
+  x=$(mv_um); sleep 1; y=$(mv_um); sleep 1; z=$(mv_um)
+  echo "$x $y $z" | $BB tr ' ' '\n' | $BB sort -n | $BB sed -n 2p
+}
 up() { $BB awk '{printf "%d",$1}' /proc/uptime; }
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') up=$(up) $*" >> $LOG; }
+na_tomada() { [ "$(rd $PS/usb/online)" = 1 ] || [ "$(rd $PS/ac/online)" = 1 ]; }
+aviso() {  # título, texto, segundos (0 = até tocar OK)
+  am start -n app.taleszin.diagnostico/.Aviso --es t "$1" --es m "$2" --ei s "${3:-10}" >/dev/null 2>&1
+}
+
+# brilho: lembra o do usuário e devolve na tomada
+BR_SAVE=$DIR/.brilho
+brilho_teto() {
+  cur=$(settings get system screen_brightness 2>/dev/null | $BB grep -o '^[0-9]*' | $BB tail -1)
+  [ -n "$cur" ] || return
+  [ -f $BR_SAVE ] || echo "$cur $(settings get system screen_brightness_mode 2>/dev/null | $BB grep -o '^[0-9]*' | $BB tail -1)" > $BR_SAVE
+  settings put system screen_brightness_mode 0 >/dev/null 2>&1
+  [ "$cur" -gt "$1" ] && settings put system screen_brightness "$1" >/dev/null 2>&1
+}
+brilho_volta() {
+  [ -f $BR_SAVE ] || return
+  read b m < $BR_SAVE
+  [ -n "$b" ] && settings put system screen_brightness "$b" >/dev/null 2>&1
+  [ -n "$m" ] && settings put system screen_brightness_mode "$m" >/dev/null 2>&1
+  rm -f $BR_SAVE; log "tomada: brilho devolvido ($b)"
+}
+
+# CPU por app: jiffies (utime+stime) de cada processo de app (uid >= 10000) em 3 s → % de um núcleo
+amostra() {
+  st=$($BB ls -ln /proc | $BB awk '$3 >= 10000 && $NF ~ /^[0-9]+$/ {printf "/proc/%s/stat ", $NF}')
+  [ -n "$st" ] && $BB awk '{s=$0; sub(/^.*\) /,"",s); split(s,f," "); p=FILENAME; gsub(/[^0-9]/,"",p); print p, f[12]+f[13]}' $st 2>/dev/null
+}
+comiloes() {  # imprime "pct pacote" dos processos de app, maior primeiro
+  amostra > $DIR/.a1; sleep 3; amostra > $DIR/.a2
+  $BB awk 'NR==FNR{a[$1]=$2; next} ($1 in a){print int(($2-a[$1])/3), $1}' $DIR/.a1 $DIR/.a2 |
+  while read pct pid; do
+    [ "$pct" -gt 0 ] || continue
+    n=$($BB tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | $BB awk '{print $1}')
+    echo "$pct ${n%%:*}"
+  done | $BB awk '{t[$2]+=$1} END{for(k in t) print t[k], k}' | $BB sort -rn   # soma por app (Bromite = navegador + renderizador)
+  rm -f $DIR/.a1 $DIR/.a2
+}
+protegido() { for k in $PG_KEEP; do case "$1" in $k*) return 0;; esac; done; return 1; }
+frente() {
+  dumpsys window windows 2>/dev/null | $BB awk -F'[ /}]' '/mCurrentFocus/{for(i=1;i<=NF;i++) if($i ~ /\./){print $i; exit}}'
+}
+nome() { case "$1" in org.bromite*) echo Bromite;; org.mozilla*) echo Firefox;; *) echo "${1##*.}";; esac; }
+# fecha comilões; $1 = limiar de 2º plano, $2 = limiar da frente (vazio = não mexe na frente)
+cortar() {
+  fg=$(frente); fechou=""
+  comiloes > $DIR/.hogs
+  while read pct pk; do
+    [ -n "$pk" ] || continue
+    protegido "$pk" && continue
+    case " $fechou " in *" $pk "*) continue;; esac
+    if [ "$pk" = "$fg" ]; then
+      [ -n "$2" ] && [ "$pct" -ge "$2" ] || continue
+      log "fechando o app da frente $pk (${pct}% CPU)"; am force-stop "$pk" >/dev/null 2>&1
+      am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
+    else
+      [ "$pct" -ge "$1" ] || continue
+      log "fechando em 2º plano $pk (${pct}% CPU)"; am force-stop "$pk" >/dev/null 2>&1
+    fi
+    fechou="$fechou $pk"
+  done < $DIR/.hogs
+  rm -f $DIR/.hogs
+  echo $fechou
+}
 
 # log não cresce sem limite (~200 KB)
 [ "$($BB stat -c %s $LOG 2>/dev/null || echo 0)" -gt 200000 ] && mv $LOG $LOG.1
 
-log "início: corte=${PG_CUTOFF_MV}mV x$PG_CONFIRM, bateria=${PG_BATT_MAX_KHZ}kHz, tomada=${PG_EXT_MAX_KHZ}kHz, carência=${PG_GRACE_S}s"
-mode=""; low=0; sag=0
+log "início: economia<${PG_ECO_MV} crítico<${PG_CRIT_MV} corte<${PG_CUTOFF_MV}mV x$PG_CONFIRM, bateria=${PG_BATT_MAX_KHZ}kHz, tomada=${PG_EXT_MAX_KHZ}kHz, carência=${PG_GRACE_S}s"
+mode=""; low=0; nivel=0; abaixo=0; crit_up=0
 while true; do
-  usb=$(rd $PS/usb/online); ac=$(rd $PS/ac/online)
   mv=$(mv_vivo)
   pct=$(rd $PS/battery/capacity)
-  if [ "$usb" = 1 ] || [ "$ac" = 1 ]; then m=tomada; want=$PG_EXT_MAX_KHZ; sag=0
+  if na_tomada; then
+    m=tomada; want=$PG_EXT_MAX_KHZ
+    [ $nivel -gt 0 ] && log "tomada: fim da economia (nível $nivel)"
+    nivel=0; abaixo=0; low=0; brilho_volta
   else
-    m=bateria; want=$PG_BATT_MAX_KHZ
-    if [ $mv -gt 0 ] && [ $mv -lt $PG_SAG_MV ]; then
-      [ "$sag" = 1 ] || { log "afundou ${mv}mV ${pct}%: teto ${PG_SAG_KHZ}kHz"; sync; }
-      sag=1
-    elif [ "$sag" = 1 ] && [ $mv -ge $PG_SAG_OK_MV ]; then
-      log "recuperou ${mv}mV: teto ${PG_BATT_MAX_KHZ}kHz"; sag=0
+    m=bateria
+    # sobe um degrau com PG_STEP_CONFIRM medianas seguidas abaixo do limiar do próximo degrau
+    case $nivel in 0) lim=$PG_ECO_MV;; 1) lim=$PG_CRIT_MV;; *) lim=0;; esac
+    if [ $mv -gt 0 ] && [ $mv -lt $lim ]; then abaixo=$((abaixo + 1)); else abaixo=0; fi
+    if [ $abaixo -ge $PG_STEP_CONFIRM ]; then
+      abaixo=0; nivel=$((nivel + 1))
+      if [ $nivel = 1 ]; then
+        log "ECONOMIA ${mv}mV ${pct}%: brilho<=${PG_ECO_BRIGHT}, fecha 2º plano >${PG_HOG_PCT}%"
+        brilho_teto $PG_ECO_BRIGHT; f=$(cortar $PG_HOG_PCT "")
+        aviso "Bateria no fim" "Modo economia ligado: brilho reduzido${f:+ e apps em segundo plano fechados ($(for p in $f; do nome $p; done | $BB tr '\n' ' '))}. Ligue o carregador assim que puder." 8
+      else
+        log "CRÍTICO ${mv}mV ${pct}%: CPU ${PG_SAG_KHZ}kHz, brilho<=${PG_CRIT_BRIGHT}, fecha comilões"
+        echo $PG_SAG_KHZ > $F 2>/dev/null
+        brilho_teto $PG_CRIT_BRIGHT; f=$(cortar $PG_HOG_PCT $PG_HOG_FG_PCT)
+        crit_up=$(up)
+        aviso "Bateria crítica" "Desempenho reduzido para o tablet não apagar${f:+. Fechei: $(for p in $f; do nome $p; done | $BB tr '\n' ' ')}. Restam poucos minutos — ligue o carregador." 10
+      fi
+      sync
+    elif [ $nivel -ge 1 ] && [ $abaixo = 0 ]; then
+      # no degrau, a cada ~1 min reolha se algum app em 2º plano voltou a comer CPU
+      [ $(( $(up) % 60 )) -lt 12 ] && cortar $PG_HOG_PCT "" >/dev/null
     fi
-    [ "$sag" = 1 ] && want=$PG_SAG_KHZ
+    want=$PG_BATT_MAX_KHZ; [ $nivel -ge 2 ] && want=$PG_SAG_KHZ
   fi
   # reaplica se algo mudou o teto (ex.: boot hook, outro processo)
   [ "$(rd $F)" != "$want" ] && echo $want > $F 2>/dev/null
@@ -85,16 +177,27 @@ while true; do
     mode=$m
   fi
 
-  if [ $m = bateria ] && [ "$(up)" -ge $PG_GRACE_S ] && [ $mv -gt 0 ] && [ $mv -lt $PG_CUTOFF_MV ]; then
+  # corte: só no crítico, depois de PG_CRIT_HOLD_S s tirando carga, e em PG_CONFIRM medianas seguidas
+  if [ $m = bateria ] && [ $nivel -ge 2 ] && [ "$(up)" -ge $PG_GRACE_S ] && \
+     [ $(( $(up) - crit_up )) -ge $PG_CRIT_HOLD_S ] && [ $mv -gt 0 ] && [ $mv -lt $PG_CUTOFF_MV ]; then
     low=$((low + 1))
     log "tensão baixa ${mv}mV ${pct}% ($low/$PG_CONFIRM)"
   else
     low=0
   fi
-  echo "$($BB date +%s) $m $want ${mv} ${pct:-?} $low $sag" > $DIR/powerguard.state
+  echo "$($BB date +%s) $m $want ${mv} ${pct:-?} $low $nivel" > $DIR/powerguard.state
 
   if [ $low -ge $PG_CONFIRM ]; then
-    log "DESLIGANDO: ${mv}mV em $low leituras seguidas"
+    log "vai desligar: ${mv}mV em $low leituras; contagem de ${PG_COUNT_S}s"
+    aviso "Bateria esgotada" "Desligando em $PG_COUNT_S s para proteger seus dados. Ligue o carregador agora para cancelar." 0
+    sync; t=0; cancel=0
+    while [ $t -lt $PG_COUNT_S ]; do sleep 1; t=$((t + 1)); na_tomada && { cancel=1; break; }; done
+    if [ $cancel = 1 ]; then
+      log "desligamento cancelado: carregador ligado"
+      aviso "Carregando" "Desligamento cancelado." 4
+      low=0; continue
+    fi
+    log "DESLIGANDO: ${mv}mV"
     sync
     am start -a android.intent.action.ACTION_REQUEST_SHUTDOWN \
       --ez android.intent.extra.KEY_CONFIRM false >> $LOG 2>&1
@@ -105,7 +208,7 @@ while true; do
   fi
 
   if [ $low -gt 0 ]; then sleep $PG_CONFIRM_S
-  elif [ "$sag" = 1 ]; then sleep $PG_SAG_S
+  elif [ $nivel -ge 1 ] || [ $abaixo -gt 0 ]; then sleep $PG_SAG_S
   elif [ $m = bateria ]; then sleep $PG_BATT_S
   else sleep $PG_INTERVAL; fi
 done

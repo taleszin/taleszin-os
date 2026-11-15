@@ -190,6 +190,19 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.5.2 — 2026-11-14 (proteção de bateria em degraus)
+Telemetria de 14/11 à noite (bateria, com a tensão ao vivo da 1.5.1): o degrau de 3,80 V descia a CPU
+para 504 MHz quase o tempo todo (a bateria gasta fica em 3,7 V com o Bromite já a 73%) e o Bromite a
+97% de CPU em 504 MHz **travava a tela** (20:07 e 20:30, reinício forçado). O corte em 3,48 V x2
+desligou três vezes com a tela marcando 33–47%, sem aviso nenhum.
+- `m7s-powerguard`: escada de economia no lugar do "desliga cedo". **Economia** (< 3,60 V): brilho
+  ≤ 110 e fecha apps em segundo plano gastando > 30% de CPU. **Crítico** (< 3,48 V): CPU 504 MHz,
+  brilho ≤ 60 e fecha o app da frente se ele passar de 55% de CPU (Bromite = navegador + renderizador
+  somados). **Desligar** só abaixo de 3,40 V em 3 leituras, 30 s depois do crítico, com aviso e
+  contagem de 15 s que o carregador cancela. Cada degrau exige 2 medianas seguidas (3 leituras em 2 s).
+  O brilho do usuário volta ao ligar na tomada.
+- Diagnóstico 1.2: janela `Aviso` que o guarda abre para explicar o que fez.
+
 ### 1.5.1 — 2026-11-14 (acabamento visual)
 - Barras de status e de navegação translúcidas de verdade: o `low_ram` desligava a transição do KitKat
   (`ActivityManager.isHighEndGfx()`); o tema responde "sim" só dentro do construtor do `BarTransitions`
