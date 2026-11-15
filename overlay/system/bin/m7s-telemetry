@@ -7,7 +7,7 @@ umask 022   # telemetria legível por apps (ex.: Diagnóstico); nada sensível a
 # Lacunas no "ts" com uptime parado = aparelho em sono profundo (bom sinal de bateria).
 
 INT=${M7S_TELEMETRY_INTERVAL:-30}
-SNAP_EVERY=${M7S_TELEMETRY_SNAP:-1800}
+SNAP_EVERY=${M7S_TELEMETRY_SNAP:-900}
 DIR=/data/m7s-telemetry
 BB=/system/bin/busybox
 PIDF=/data/local/tmp/m7s-telemetry.pid
@@ -21,7 +21,7 @@ op=$(cat $PIDF 2>/dev/null)
 if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-telemetry /proc/$op/cmdline 2>/dev/null; then exit 0; fi
 echo $$ > $PIDF
 
-HDR="ts,uptime_s,batt_pct,batt_mv,batt_status,usb,ac,backlight,cpu_khz,cpu1_on,cpu_busy_pct,iowait_pct,load1,mem_free_kb,mem_cached_kb,swap_used_kb,procs,wlan_rx_b,wlan_tx_b,nand_rd_sect,nand_wr_sect,ctxt_delta,fg_app"
+HDR="ts,uptime_s,batt_pct,batt_mv,batt_status,usb,ac,backlight,cpu_khz,cpu1_on,cpu_busy_pct,iowait_pct,load1,mem_free_kb,mem_cached_kb,swap_used_kb,procs,wlan_rx_b,wlan_tx_b,nand_rd_sect,nand_wr_sect,ctxt_delta,majflt_s,swpin_s,swpout_s,shmem_kb,top_app,top_app_cpu,fg_app"
 
 rd() { cat "$1" 2>/dev/null; }
 # batt_mv ao vivo (v1.5.1): voltage_now congela entre degraus de % — ver m7s-powerguard
@@ -32,6 +32,21 @@ mv_vivo() {
   else uv=$(rd /sys/class/power_supply/battery/voltage_now); echo $(( ${uv:-0} / 1000 )); fi
 }
 
+vm() { $BB awk '/^pgmajfault/{a=$2}/^pswpin/{b=$2}/^pswpout/{c=$2}END{print a, b, c}' /proc/vmstat; }
+# CPU por app entre duas amostras (v1.5.3): jiffies de cada processo de app; o maior vira top_app
+JF=/dev/m7s-tele-jf
+jiffies() {
+  st=$($BB ls -ln /proc | $BB awk '$3 >= 10000 && $NF ~ /^[0-9]+$/ {printf "/proc/%s/stat ", $NF}')
+  [ -n "$st" ] && $BB awk '{s=$0; sub(/^.*\) /,"",s); split(s,f," "); p=FILENAME; gsub(/[^0-9]/,"",p); print p, f[12]+f[13]}' $st 2>/dev/null
+}
+top_app() {  # imprime "nome,pct" (pct = % de um núcleo no intervalo $1 s)
+  jiffies > $JF.n
+  r=$([ -f $JF ] && $BB awk -v dt=$1 'NR==FNR{a[$1]=$2; next} ($1 in a){d=$2-a[$1]; if(d>m){m=d; p=$1}} END{if(m>0) printf "%s %d", p, m*100/(dt*100)}' $JF $JF.n)
+  mv $JF.n $JF
+  set -- $r
+  [ -n "$1" ] && echo "$($BB tr '\0' ' ' < /proc/$1/cmdline 2>/dev/null | $BB awk '{print $1}'),$2" || echo ","
+}
+
 cpu_stat() { $BB awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5, $6} /^ctxt/{print $2}' /proc/stat | $BB tr '\n' ' '; }
 
 # eventos do sistema (crash, ANR, morte por memória, início de processo) em fluxo
@@ -39,6 +54,11 @@ cpu_stat() { $BB awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8, $5, $6} /^ctxt/{print 
 LOGPID=$!
 
 set -- $(cpu_stat); PT=$1; PI=$2; PW=$3; PC=$4
+set -- $(vm); PMJ=$1; PSI=$2; PSO=$3; PUP=$($BB awk '{printf "%d",$1}' /proc/uptime); jiffies > $JF
+
+# erros fatais (crash Java, crash nativo) em arquivo próprio — a caixa preta cruza com eles
+( logcat -v time AndroidRuntime:E DEBUG:I libc:F *:S 2>/dev/null >> $DIR/erros-$(date +%Y-%m-%d).log ) &
+ERRPID=$!
 LAST_SNAP=0
 
 while true; do
@@ -46,6 +66,8 @@ while true; do
   NOW=$($BB date +%s)
   DAY=$(date +%Y-%m-%d)
   F=$DIR/$DAY.csv
+  # cabeçalho mudou (versão nova da ROM no meio do dia): guarda o arquivo antigo com outro nome
+  [ -f $F ] && [ "$($BB head -1 $F)" != "$HDR" ] && mv $F $DIR/$DAY.v-antiga.csv.txt
   [ -f $F ] || echo "$HDR" > $F
 
   set -- $(cpu_stat); T=$1; I=$2; W=$3; C=$4
@@ -55,6 +77,10 @@ while true; do
   CTX=$((C-PC)); PT=$T; PI=$I; PW=$W; PC=$C
 
   UP=$($BB awk '{printf "%d",$1}' /proc/uptime)
+  DU=$((UP-PUP)); [ $DU -le 0 ] && DU=1
+  set -- $(vm); VMS="$(( ($1-PMJ)/DU )),$(( ($2-PSI)/DU )),$(( ($3-PSO)/DU ))"; PMJ=$1; PSI=$2; PSO=$3
+  SHM=$($BB awk '/^Shmem/{print $2}' /proc/meminfo)
+  TOP=$(top_app $DU); PUP=$UP
   BL=$(rd /sys/class/backlight/rk28_bl/brightness)
   MEM=$($BB awk '/^MemFree/{f=$2}/^Cached/{c=$2}/^SwapTotal/{st=$2}/^SwapFree/{sf=$2}END{print f","c","st-sf}' /proc/meminfo)
   NET=$($BB awk '/wlan0/{sub(/.*:/,"");print $1","$9}' /proc/net/dev); [ -z "$NET" ] && NET="0,0"
@@ -67,7 +93,7 @@ while true; do
     FG=$(dumpsys window windows 2>/dev/null | $BB awk -F'[ /}]' '/mCurrentFocus/{for(i=1;i<=NF;i++) if($i ~ /\./){print $i; exit}}')
   fi
 
-  echo "$NOW,$UP,$(rd /sys/class/power_supply/battery/capacity),$(mv_vivo),$(rd /sys/class/power_supply/battery/status),$(rd /sys/class/power_supply/usb/online),$(rd /sys/class/power_supply/ac/online),$BL,$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq),$(rd /sys/devices/system/cpu/cpu1/online),$BUSY,$IOW,$LOAD,$MEM,$PROCS,$NET,$NAND,$CTX,$FG" >> $F
+  echo "$NOW,$UP,$(rd /sys/class/power_supply/battery/capacity),$(mv_vivo),$(rd /sys/class/power_supply/battery/status),$(rd /sys/class/power_supply/usb/online),$(rd /sys/class/power_supply/ac/online),$BL,$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq),$(rd /sys/devices/system/cpu/cpu1/online),$BUSY,$IOW,$LOAD,$MEM,$PROCS,$NET,$NAND,$CTX,$VMS,${SHM:-0},$TOP,$FG" >> $F
   # na bateria o aparelho pode apagar a qualquer instante: sem sync as últimas linhas ficavam no
   # cache do driver da NAND e se perdiam (14/11: nenhuma linha com usb=0 antes dos apagões)
   [ "$(rd /sys/class/power_supply/usb/online)$(rd /sys/class/power_supply/ac/online)" = 00 ] && sync
@@ -84,13 +110,18 @@ while true; do
       echo "-- ksm"; rd /sys/kernel/mm/ksm/pages_sharing
       echo "-- memória por processo (PSS)"; dumpsys meminfo 2>/dev/null | $BB sed -n '/Total PSS by process/,/^$/p' | $BB head -15
       echo "-- top CPU"; top -n 1 -m 8 2>/dev/null
+      echo "-- meminfo"; $BB grep -E '^(MemFree|Cached|Shmem|Mapped|AnonPages|Slab|SwapFree|Active|Inactive)' /proc/meminfo
+      echo "-- vmstat"; $BB grep -E '^(pgmajfault|pswpin|pswpout|pgsteal_normal|allocstall|kswapd_steal)' /proc/vmstat
+      echo "-- lowmemorykiller (dmesg)"; dmesg 2>/dev/null | $BB grep -i "to kill\|lowmem\|oom" | $BB tail -8
       echo "-- df"; df /data /system /sdcard
     } >> $S 2>&1
   fi
 
   # rotação: se o logcat morreu (troca de dia/arquivo), reinicia
+  kill -0 $ERRPID 2>/dev/null || { ( logcat -v time AndroidRuntime:E DEBUG:I libc:F *:S 2>/dev/null >> $DIR/erros-$DAY.log ) & ERRPID=$!; }
   kill -0 $LOGPID 2>/dev/null || { ( logcat -b events -v time -s $EVTAGS 2>/dev/null >> $DIR/events-$DAY.log ) & LOGPID=$!; }
 
   # mantém no máximo ~30 dias
+  ls $DIR/erros-*.log $DIR/events-*.log $DIR/snap-*.txt 2>/dev/null | $BB sort -r | $BB awk 'NR>90' | while read old; do rm -f "$old"; done
   ls $DIR/*.csv 2>/dev/null | $BB sort -r | $BB awk 'NR>30' | while read old; do rm -f "$old"; done
 done

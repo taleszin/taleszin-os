@@ -19,6 +19,12 @@ echo 0   > /proc/sys/vm/page-cluster        # swap em RAM: sem leitura antecipad
 echo 80  > /proc/sys/vm/swappiness
 echo 50  > /proc/sys/vm/vfs_cache_pressure  # segura dentries/inodes (muitos arquivos pequenos)
 
+# LMK mais cedo nos apps em 2º plano (1.5.3). O LMK do 3.0 conta o ashmem do Chromium (abas,
+# texturas) como "Cached" descartável — não é. Com o padrão (29…78 MB) ele nunca matava nada e o
+# sistema travava em thrash (15/11 13:12, 15 min). Frente/visível iguais; 2º plano/cache sobem.
+LMK=/sys/module/lowmemorykiller/parameters/minfree
+[ -w $LMK ] && echo "${LMK_MINFREE:-7475,9584,12288,16384,24576,32768}" > $LMK
+
 # KSM: funde páginas idênticas entre processos (heaps Dalvik). ~400 KB/s de varredura; ksmd
 # não acorda o aparelho em suspend (kernel congelado). Medir: /sys/kernel/mm/ksm/pages_sharing.
 if [ -e /sys/kernel/mm/ksm/run ]; then
@@ -59,7 +65,7 @@ chmod 0664 /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq /sys/devices/sy
 # um com --ignore-gpu-blacklist (força a Mali-400: Bus error no Bromite) e UA do Chrome 30, em 777.
 # Troca pelo da ROM (/system/etc/chrome-command-line) se for o de fábrica ou faltar.
 CCL=/data/local/chrome-command-line
-if [ ! -f $CCL ] || $BB grep -q -e ignore-gpu-blacklist -e Chrome/30 $CCL 2>/dev/null; then
+if ! $BB cmp -s /system/etc/chrome-command-line $CCL; then
   cp /system/etc/chrome-command-line $CCL && chmod 644 $CCL
 fi
 
@@ -69,6 +75,10 @@ fi
 # telemetria leve (desligar: touch /data/m7s-telemetry.off)
 [ "$TELEMETRY" = 1 ] && [ -x /system/bin/m7s-telemetry ] && [ ! -f /data/m7s-telemetry.off ] && \
   $BB setsid /system/bin/m7s-telemetry </dev/null >/dev/null 2>&1 &
+
+# sentinela anti-travamento + caixa preta (desligar: touch /data/m7s-sentinela.off)
+[ -x /system/bin/m7s-sentinela ] && [ ! -f /data/m7s-sentinela.off ] && \
+  $BB setsid /system/bin/m7s-sentinela </dev/null >/dev/null 2>&1 &
 
 # guarda de bateria: teto de CPU fora da tomada + desligamento limpo em tensão baixa
 # (desligar: touch /data/m7s-powerguard.off). Ver docs/HARDWARE.md, seção Bateria.

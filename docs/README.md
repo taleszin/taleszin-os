@@ -190,6 +190,23 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.5.3 — 2026-11-15 (anti-travamento e caixa preta)
+Telemetria de 15/11: os congelamentos são **falta de memória com o Bromite** (165 MB de ~400 MB úteis).
+Às 13:12 o tablet ficou 15 min parado com load 25 e a telemetria sem conseguir gravar; só voltou com
+reinício forçado. O LMK do kernel 3.0 conta o ashmem do Chromium como cache descartável e nunca matava.
+- `m7s-sentinela` (novo, prioridade alta, só /proc e kill): mede load, memória realmente livre
+  (MemFree + Cached − Shmem − Mapped) e page faults/s a cada 5 s. Em aperto confirmado mata **um**
+  processo, do menos importante ao mais: app em 2º plano → serviço/visível → renderizador da aba da
+  frente (a aba recarrega; o navegador continua). Registra tudo na **caixa preta**.
+- **Caixa preta** (`/data/m7s-telemetry/caixa-preta-*.log`): pulso de 5 s em RAM, persistido a cada
+  60 s (e sempre na bateria/aperto); retrato em cada intervenção (top memória/CPU, meminfo, dmesg);
+  no boot diz **como a sessão anterior acabou** (desligamento limpo, bateria, travou, parou sem aviso).
+- Telemetria: novas colunas `majflt_s, swpin_s, swpout_s, shmem_kb, top_app, top_app_cpu`; retrato a
+  cada 15 min com meminfo/vmstat/LMK; `erros-*.log` com crashes Java e nativos.
+- LMK: 2º plano/cache passam a 48/64/96/128 MB. Bromite: `--renderer-process-limit=1`,
+  `--disable-site-isolation-trials`; o `chrome-command-line` da ROM sempre substitui o antigo.
+- powerguard: o brilho devolvido na tomada sobrescrevia a variável de fonte ("fonte=0" no log).
+
 ### 1.5.2 — 2026-11-14 (proteção de bateria em degraus)
 Telemetria de 14/11 à noite (bateria, com a tensão ao vivo da 1.5.1): o degrau de 3,80 V descia a CPU
 para 504 MHz quase o tempo todo (a bateria gasta fica em 3,7 V com o Bromite já a 73%) e o Bromite a

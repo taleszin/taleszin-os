@@ -1,0 +1,153 @@
+#!/system/bin/sh
+umask 022
+# m7s-sentinela — anti-travamento + caixa preta da Taleszin OS (v1.5.3).
+#
+# POR QUE: em 15/11 13:12–13:27 o tablet ficou 15 min congelado (load 25, telemetria sem gravar)
+# com o Bromite em 165 MB (renderizador 90 MB + navegador 74 MB) de ~400 MB úteis. O LMK do kernel
+# 3.0 não matou nada: ele olha "Cached", e o Chromium guarda as texturas/abas em ashmem, que conta
+# como Cached mas NÃO pode ser descartado. O sistema fica relendo código da NAND sem parar (thrash)
+# e só volta com reinício forçado.
+#
+# O QUE FAZ (a cada SN_INT s, só /proc e kill — nada de Java, que também trava no thrash):
+#   - mede load, memória realmente livre (MemFree + Cached − Shmem − Mapped) e page faults maiores/s;
+#   - "aperto" = load1 ≥ SN_LOAD ou faults ≥ SN_MAJ/s, com memória livre < SN_AVAIL_KB;
+#     com SN_CONFIRM medidas seguidas de aperto, mata UM processo, do menos ao mais importante:
+#       1. o maior app em cache/2º plano (oom_score_adj ≥ 500);
+#       2. o maior serviço/app visível (adj ≥ 100);
+#       3. o renderizador do navegador da frente (processo isolado, uid 99xxx): a aba mostra
+#          "Ops!" e recarrega — melhor que 15 min de tela congelada; o navegador continua aberto;
+#     espera SN_COOL s antes de agir de novo.
+#   - CAIXA PRETA (/data/m7s-telemetry/caixa-preta-AAAA-MM-DD.log): pulso a cada SN_INT s em
+#     /dev (RAM, não gasta a NAND) e copiado para o disco a cada SN_FLUSH s (e já com sync em aperto
+#     ou na bateria); cada intervenção leva um retrato (top memória/CPU, meminfo, vmstat, dmesg).
+#   - no boot, classifica como a sessão anterior acabou: desligamento limpo, bateria esgotada,
+#     travou (aperto nos últimos pulsos) ou parou sem aviso (reinício forçado/queda de energia).
+# Desligar: touch /data/m7s-sentinela.off
+SN_INT=5; SN_CONFIRM=2; SN_COOL=20; SN_FLUSH=60
+SN_LOAD=8; SN_MAJ=250; SN_AVAIL_KB=61440; SN_GRACE=120   # boot: carga alta normal, só observa
+[ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
+[ -f /data/m7s-sentinela.off ] && exit 0
+
+BB=/system/bin/busybox
+DIR=/data/m7s-telemetry
+PIDF=/data/local/tmp/m7s-sentinela.pid
+RAMP=/dev/m7s-pulso          # tmpfs
+DISKP=$DIR/pulso.txt         # cópia persistente dos últimos pulsos (para o diagnóstico pós-boot)
+mkdir -p $DIR; chmod 755 $DIR
+
+op=$(cat $PIDF 2>/dev/null)
+if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-sentinela /proc/$op/cmdline 2>/dev/null; then exit 0; fi
+echo $$ > $PIDF
+# prioridade alta: quem tem de agir no aperto não pode ficar na fila atrás dele
+$BB renice -n -15 -p $$ >/dev/null 2>&1
+echo -1000 > /proc/$$/oom_score_adj 2>/dev/null
+
+rd() { cat "$1" 2>/dev/null; }
+cx() { echo "$DIR/caixa-preta-$(date +%Y-%m-%d).log"; }
+ev() { echo "$(date '+%Y-%m-%d %H:%M:%S') up=$(up) $*" >> $(cx); }
+up() { $BB awk '{printf "%d",$1}' /proc/uptime; }
+BI=/sys/devices/platform/rk30-battery/batinfo
+mv_vivo() {
+  a=$($BB sed -n 's/.*cur adc value=\([0-9]*\).*/\1/p' $BI 2>/dev/null)
+  if [ -n "$a" ] && [ "$a" -gt 300 ]; then echo $(( a * 6060 / 1000 ))
+  else uv=$(rd /sys/class/power_supply/battery/voltage_now); echo $(( ${uv:-0} / 1000 )); fi
+}
+plug() { echo "$(rd /sys/class/power_supply/usb/online)$(rd /sys/class/power_supply/ac/online)"; }
+
+# processos com adj e RSS: "rss_kb adj pid" (uma passada de awk só)
+tabela() {
+  $BB awk 'FNR==1{split(FILENAME,a,"/"); p=a[3]}
+           FILENAME ~ /oom_score_adj$/ {adj[p]=$1; next}
+           {rss[p]=$2*4}
+           END{for(p in rss) if(rss[p]>0 && (p in adj)) print rss[p], adj[p], p}' \
+    /proc/[0-9]*/oom_score_adj /proc/[0-9]*/statm 2>/dev/null | $BB sort -rn
+}
+nome() { $BB tr '\0' ' ' < /proc/$1/cmdline 2>/dev/null | $BB awk '{print $1}'; }
+uid() { $BB stat -c %u /proc/$1 2>/dev/null; }
+
+retrato() {  # $1 = motivo
+  {
+    echo "----- retrato: $1"
+    echo "load: $(rd /proc/loadavg)"
+    $BB grep -E '^(MemFree|Cached|Shmem|Mapped|SwapFree|SwapTotal|Active\(file\)|Inactive\(file\))' /proc/meminfo | $BB tr -s ' ' | $BB tr '\n' ';'; echo
+    echo "top memória (rss_kb adj pid nome):"
+    tabela | $BB head -8 | while read r a p; do echo "  $r $a $p $(nome $p)"; done
+    echo "top CPU:"; top -n 1 -m 5 -d 1 2>/dev/null | $BB grep -E '^ *[0-9]' | $BB head -5
+    echo "dmesg (fim):"; dmesg 2>/dev/null | $BB tail -15
+    echo "-----"
+  } >> $(cx) 2>&1
+}
+
+# ---------- como a sessão anterior acabou (lê o pulso persistido do boot anterior) ----------
+if [ -f $DISKP ]; then
+  ult=$($BB tail -1 $DISKP)
+  if $BB grep -q "DESLIGAMENTO-LIMPO" $DISKP; then fim="desligamento limpo"
+  else
+    # campos do pulso: data hora up load avail_kb maj/s mv plug fg-adj0
+    set -- $ult
+    mvp=${7:-0}; plg=${8:-00}
+    aperto=$($BB tail -6 $DISKP | $BB awk '$4+0 >= 6 || $6+0 >= 150' | $BB wc -l)
+    if [ "$plg" = 00 ] && [ "$mvp" -gt 0 ] && [ "$mvp" -lt 3550 ]; then fim="bateria esgotada (${mvp} mV no último pulso)"
+    elif [ "$aperto" -ge 2 ]; then fim="TRAVOU (aperto de memória/CPU nos últimos pulsos) e foi reiniciado à força"
+    else fim="parou sem aviso (reinício forçado, queda de energia ou travamento sem sinal)"; fi
+  fi
+  ev "BOOT — sessão anterior: $fim. Último pulso: $ult"
+  { echo "  últimos pulsos da sessão anterior:"; $BB tail -12 $DISKP | $BB sed 's/^/    /'; } >> $(cx)
+  mv $DISKP $DISKP.anterior
+fi
+ev "início: aperto = load>=$SN_LOAD ou faults>=$SN_MAJ/s com livre<$((SN_AVAIL_KB/1024))MB, x$SN_CONFIRM, a cada ${SN_INT}s"
+: > $RAMP
+
+pmaj=$($BB awk '/^pgmajfault/{print $2}' /proc/vmstat); pt=$(up)
+n_aperto=0; ult_acao=0; ult_flush=$(up); limpo=0
+while true; do
+  sleep $SN_INT
+  t=$(up); dt=$((t - pt)); [ $dt -le 0 ] && dt=1
+  maj=$($BB awk '/^pgmajfault/{print $2}' /proc/vmstat); majs=$(( (maj - pmaj) / dt )); pmaj=$maj; pt=$t
+  # se o laço demorou muito mais que SN_INT sem o aparelho dormir, o sistema ficou travado
+  [ $dt -gt $((SN_INT * 6)) ] && ev "laço atrasou ${dt}s (sistema sem responder ou sono profundo)"
+  load=$($BB cut -d' ' -f1 /proc/loadavg)
+  avail=$($BB awk '/^MemFree/{f=$2}/^Cached/{c=$2}/^Shmem/{s=$2}/^Mapped/{m=$2}END{v=f+c-s-m; if(v<f)v=f; print v}' /proc/meminfo)
+  mv=$(mv_vivo); pl=$(plug)
+  echo "$(date '+%Y-%m-%d %H:%M:%S') $t $load $avail $majs $mv $pl" >> $RAMP
+
+  # desligamento pedido pelo Android (botão, powerguard): marca e grava antes de o init matar todos
+  if [ $limpo = 0 ] && [ -n "$(getprop sys.shutdown.requested)" ]; then
+    limpo=1; echo "$(date '+%Y-%m-%d %H:%M:%S') $t DESLIGAMENTO-LIMPO" >> $RAMP
+    ev "desligamento pedido ($(getprop sys.shutdown.requested))"; $BB tail -60 $RAMP > $DISKP; sync
+  fi
+
+  l=${load%%.*}
+  if [ "$avail" -lt $SN_AVAIL_KB ] && { [ "$l" -ge $SN_LOAD ] || [ $majs -ge $SN_MAJ ]; }; then
+    n_aperto=$((n_aperto + 1))
+  else n_aperto=0; fi
+
+  if [ $n_aperto -ge $SN_CONFIRM ] && [ $((t - ult_acao)) -ge $SN_COOL ] && [ $t -ge $SN_GRACE ]; then
+    alvo=""; nivel=""
+    tabela > /dev/m7s-tab
+    while read r a p; do [ "$a" -ge 500 ] && { alvo=$p; nivel="2º plano"; break; }; done < /dev/m7s-tab
+    [ -z "$alvo" ] && while read r a p; do
+      [ "$a" -ge 100 ] && [ "$a" -lt 500 ] && { alvo=$p; nivel="visível/serviço"; break; }; done < /dev/m7s-tab
+    [ -z "$alvo" ] && while read r a p; do
+      u=$(uid $p); [ -n "$u" ] && [ "$u" -ge 99000 ] && { alvo=$p; nivel="renderizador da frente"; break; }; done < /dev/m7s-tab
+    rm -f /dev/m7s-tab
+    if [ -n "$alvo" ]; then
+      nm=$(nome $alvo); rss=$($BB awk '{print $2*4}' /proc/$alvo/statm 2>/dev/null)
+      ev "APERTO load=$load livre=$((avail/1024))MB faults=$majs/s → matei $nm (pid $alvo, ${rss}KB, $nivel)"
+      kill -9 $alvo 2>/dev/null
+    else
+      ev "APERTO load=$load livre=$((avail/1024))MB faults=$majs/s → nada seguro para matar"
+    fi
+    retrato "aperto"
+    ult_acao=$t; n_aperto=0
+    $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
+  fi
+
+  # pulso persistido: a cada SN_FLUSH s; na bateria ou com load alto, sempre + sync
+  if [ "$pl" = 00 ] || [ "$l" -ge 4 ]; then $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
+  elif [ $((t - ult_flush)) -ge $SN_FLUSH ]; then $BB tail -60 $RAMP > $DISKP; ult_flush=$t; fi
+  # pulso em RAM limitado
+  [ $($BB wc -l < $RAMP) -gt 400 ] && { $BB tail -200 $RAMP > $RAMP.n; mv $RAMP.n $RAMP; }
+  # caixa preta: mantém ~30 dias
+  ls $DIR/caixa-preta-*.log 2>/dev/null | $BB sort -r | $BB awk 'NR>30' | while read o; do rm -f "$o"; done
+done

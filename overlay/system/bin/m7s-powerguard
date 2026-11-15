@@ -85,10 +85,11 @@ brilho_teto() {
 }
 brilho_volta() {
   [ -f $BR_SAVE ] || return
-  read b m < $BR_SAVE
-  [ -n "$b" ] && settings put system screen_brightness "$b" >/dev/null 2>&1
-  [ -n "$m" ] && settings put system screen_brightness_mode "$m" >/dev/null 2>&1
-  rm -f $BR_SAVE; log "tomada: brilho devolvido ($b)"
+  # (1.5.3) variáveis próprias: o "read b m" da 1.5.2 sobrescrevia o $m do laço → "fonte=0" no log
+  read br_b br_m < $BR_SAVE
+  [ -n "$br_b" ] && settings put system screen_brightness "$br_b" >/dev/null 2>&1
+  [ -n "$br_m" ] && settings put system screen_brightness_mode "$br_m" >/dev/null 2>&1
+  rm -f $BR_SAVE; log "tomada: brilho devolvido ($br_b)"
 }
 
 # CPU por app: jiffies (utime+stime) de cada processo de app (uid >= 10000) em 3 s → % de um núcleo
