@@ -30,6 +30,11 @@ PG_BATT_S=10
 PG_ECO_MV=3600; PG_CRIT_MV=3480; PG_SAG_KHZ=504000; PG_STEP_CONFIRM=2; PG_SAG_S=5
 PG_ECO_BRIGHT=110; PG_CRIT_BRIGHT=60; PG_HOG_PCT=30; PG_HOG_FG_PCT=55
 PG_CRIT_HOLD_S=30; PG_COUNT_S=15
+# BRILHO DE BATERIA (v1.5.4). Com a tela ligada, a luz de fundo é o maior consumo do aparelho (CPU
+# ociosa ~0,6%, daemons ~0,7% de um núcleo, standby com 4 wakeups/h). Ao DESPLUGAR, se o brilho
+# estiver acima de PG_BATT_BRIGHT, baixa para ele UMA vez (o usuário pode subir de novo; o guarda não
+# insiste). Na tomada devolve o brilho de antes. 0 = desliga.
+PG_BATT_BRIGHT=170
 # nunca fecha: tela inicial, barra, teclado, o próprio aviso
 PG_KEEP="app.taleszin.home com.android.systemui com.android.inputmethod app.taleszin.diagnostico com.ceco.kitkat.gravitybox de.robv.android.xposed.installer android.process system_server com.android.phone"
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
@@ -148,6 +153,13 @@ while true; do
     nivel=0; abaixo=0; low=0; brilho_volta
   else
     m=bateria
+    # acabou de desplugar (ou boot na bateria): teto de brilho de bateria, uma vez só
+    if [ "$mode" != bateria ] && [ "${PG_BATT_BRIGHT:-0}" -gt 0 ]; then
+      bcur=$(settings get system screen_brightness 2>/dev/null | $BB grep -o '^[0-9]*' | $BB tail -1)
+      if [ -n "$bcur" ] && [ "$bcur" -gt $PG_BATT_BRIGHT ]; then
+        brilho_teto $PG_BATT_BRIGHT; log "bateria: brilho ${bcur} → ${PG_BATT_BRIGHT} (volta na tomada)"
+      fi
+    fi
     # sobe um degrau com PG_STEP_CONFIRM medianas seguidas abaixo do limiar do próximo degrau
     case $nivel in 0) lim=$PG_ECO_MV;; 1) lim=$PG_CRIT_MV;; *) lim=0;; esac
     if [ $mv -gt 0 ] && [ $mv -lt $lim ]; then abaixo=$((abaixo + 1)); else abaixo=0; fi

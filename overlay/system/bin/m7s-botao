@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# m7s-botao — reinício forçado pelo botão liga/desliga (v1.5.3).
+# m7s-botao — reinício forçado pelo botão liga/desliga (v1.5.3; 1.5.4 espera o teclado no boot).
 # O M7s não tem reinício por hardware no botão: travado, só o palito no furo de reset resolvia.
 # Este serviço lê o teclado físico (/dev/input/event0, rk29-keypad) cru, direto do kernel — não depende
 # do Android, que é justamente o que trava — e, com o liga/desliga SEGURADO por BT_SEGURAR s:
@@ -14,7 +14,7 @@ DEV=/dev/input/event0
 FLAG=/dev/m7s-botao-down
 PIDF=/data/local/tmp/m7s-botao.pid
 op=$(cat $PIDF 2>/dev/null)
-if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-botao /proc/$op/cmdline 2>/dev/null; then exit 0; fi
+if [ -n "$op" ] && [ "$op" != $$ ] && [ "$op" != "$PPID" ] && $BB grep -q m7s-botao /proc/$op/cmdline 2>/dev/null; then exit 0; fi
 echo $$ > $PIDF
 $BB renice -n -20 -p $$ >/dev/null 2>&1
 echo -1000 > /proc/$$/oom_score_adj 2>/dev/null
@@ -36,6 +36,9 @@ seq=0
 # Lê o evdev cru: struct input_event de 16 bytes (32 bits: timeval 8, type 2, code 2, value 4).
 # (getevent num pipe segura a saída em buffer — os eventos só chegavam em blocos de 4 KB.)
 # O fd fica aberto (exec 3<) para não perder evento entre uma leitura e outra.
+# 1.5.4: no boot o nó do teclado pode ainda não existir (ueventd) e um "exec 3<" que falha encerra
+# o script — 15/11 20:39 o serviço não subiu. Espera o nó (até ~2 min) e só então abre.
+n=0; while [ ! -c $DEV ] && [ $n -lt 60 ]; do sleep 2; n=$((n + 1)); done
 exec 3< $DEV
 while true; do
   # busybox 1.11: od só em octal com deslocamento na 1ª coluna → $1 = offset, bytes em $2..$17

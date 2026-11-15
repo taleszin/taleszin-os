@@ -190,6 +190,29 @@ docs/                     este README, VISUAL.md, HARDWARE.md, TEST-PLAN.md, FIN
 
 ## Changelog
 
+### 1.5.4 — 2026-11-15 (autonomia)
+
+Medição antes de mexer (tablet ao vivo + telemetria de 14–15/11):
+- **Standby já está limpo.** Com a tela apagada na bateria o aparelho dorme de fato: só 4 alarmes acordaram o aparelho desde o boot, o Wi-Fi dorme (`wifi_sleep_policy=1`, driver 8188eu com LPS/IPS) e os nossos daemons ficam congelados no suspend.
+- **O gasto é com a tela ligada.** Na telemetria fora da tomada são ~1,3 h, quase tudo com a tela acesa, e a bateria de 2014 cai ~100 %/h (o gauge é por tensão e não é preciso). Com o aparelho parado, a CPU fica perto de zero: Estante ~0,6 %, KSM ~1 % de um núcleo (economiza ~18 MB de RAM, fica), e os quatro daemons ~0,7 % de um núcleo somados. O que sobra é a **luz de fundo**, que a 175–219/255 (a média de uso) é o maior consumidor.
+- **A CPU já está contida.** Na bateria o teto é 816 MHz (1008 nunca é usado), o Wi-Fi está em economia e as animações estão desligadas.
+
+Mudanças:
+- **Brilho de bateria** (`PG_BATT_BRIGHT=170`): ao desplugar, se o brilho estiver acima de 170/255 o powerguard baixa para 170 **uma vez**. O usuário pode subir de novo e o guarda não insiste. Na tomada, o brilho de antes volta. A luz de fundo é ~linear no PWM: 219→170 corta ~22 % dela. Ganho esperado de **~5–10 % de autonomia** com a tela ligada quando se usa brilho alto. `0` desliga.
+- **Sentinela sem sync a cada 5 s na bateria**: o pulso vai para o disco a cada 15 s, como na tomada, e só passa a ir a cada pulso quando o apagão é provável (tensão < 3650 mV ou load ≥ 4). A faxina da caixa preta (ls/sort/rm, wc) roda a cada ~5 min em vez de a cada pulso. Ganho pequeno, ~1 %: menos escrita na NAND e ~6 processos a menos a cada 5 s.
+- **Wi-Fi**: `wifi_networks_available_notification_on=0` (o aviso de "redes abertas" fazia o Wi-Fi varrer sozinho quando desconectado). Vai no `m7s-firstboot` e foi aplicado ao vivo.
+- **Correção do botão**: em 15/11 20:39 o `m7s-botao` não subiu no boot. O `install-recovery.sh` agora apaga os `.pid` da sessão anterior antes de subir os daemons (um PID velho que no boot novo caísse num processo cujo cmdline citasse o daemon fazia ele achar que já rodava). Além disso, o botão espera o nó `/dev/input/event0` existir e ignora o processo pai.
+
+Ficou de fora (de propósito):
+- **Teto de CPU ou governor mais preguiçoso com a tela ligada**: o travamento por thrash foi o grande problema e o toque não pode piorar. Na bateria já valem os 816 MHz.
+- **Brilho automático**: o "Light sensor" da lista é o HAL de mentira do AOSP (sempre 0), não existe sensor de luz.
+- **Escurecer depois de N s sem toque**: o Android 4.4 só escurece nos últimos segundos antes do timeout. Daria para fazer lendo o touchscreen cru (como o `m7s-botao`), mas é invasivo; fica como ideia.
+- **`dirty_writeback` mais longo**: aumentaria a perda de dados nos apagões, que são frequentes com esta bateria.
+- **Tirar a KSM**: custa ~1 % de um núcleo e devolve ~18 MB de RAM. Num aparelho de 512 MB vale.
+- **O ganho grande de verdade é trocar a bateria**: são 2200 mAh nominais de 2014, que hoje rendem menos de 1 h de tela. Uma Li-Po nova de 3,7 V e mesmo tamanho daria várias horas.
+
+Como medir: compare o `batt_mv` por hora com a tela ligada (`backlight>0`, `usb=0`) nos CSVs de `/data/m7s-telemetry` antes e depois de 15/11, e procure "bateria: brilho" no `powerguard.log`.
+
 ### 1.5.3 — 2026-11-15 (anti-travamento e caixa preta)
 Telemetria de 15/11: os congelamentos são **falta de memória com o Bromite** (165 MB de ~400 MB úteis).
 Às 13:12 o tablet ficou 15 min parado com load 25 e a telemetria sem conseguir gravar; só voltou com

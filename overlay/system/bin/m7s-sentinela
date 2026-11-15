@@ -1,6 +1,6 @@
 #!/system/bin/sh
 umask 022
-# m7s-sentinela — anti-travamento + caixa preta da Taleszin OS (v1.5.3).
+# m7s-sentinela — anti-travamento + caixa preta da Taleszin OS (v1.5.4).
 #
 # POR QUE: em 15/11 13:12–13:27 o tablet ficou 15 min congelado (load 25, telemetria sem gravar)
 # com o Bromite em 165 MB (renderizador 90 MB + navegador 74 MB) de ~400 MB úteis. O LMK do kernel
@@ -25,6 +25,11 @@ umask 022
 #     travou (aperto nos últimos pulsos) ou parou sem aviso (reinício forçado/queda de energia).
 # Desligar: touch /data/m7s-sentinela.off
 SN_INT=5; SN_CONFIRM=2; SN_COOL=20; SN_FLUSH=15
+# v1.5.4 (economia): na bateria a 1.5.3 gravava o pulso com sync A CADA 5 s (NAND acordando 12x/min).
+# Agora: na bateria a cada SN_FLUSH s como na tomada; volta a ser a cada pulso só perto do fim
+# (tensão < SN_MV_PERTO, acima do degrau de economia do powerguard) ou com load alto — que é quando
+# um apagão é provável e o último pulso importa.
+SN_MV_PERTO=3650
 SN_LOAD=8; SN_MAJ=250; SN_AVAIL_KB=61440; SN_GRACE=120   # boot: carga alta normal, só observa
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
 [ -f /data/m7s-sentinela.off ] && exit 0
@@ -104,7 +109,7 @@ ev "início: aperto = load>=$SN_LOAD ou faults>=$SN_MAJ/s com livre<$((SN_AVAIL_
 : > $RAMP
 
 pmaj=$($BB awk '/^pgmajfault/{print $2}' /proc/vmstat); pt=$(up)
-n_aperto=0; ult_acao=0; ult_flush=$(up); limpo=0
+n_aperto=0; ult_acao=0; ult_flush=$(up); limpo=0; volta=0
 while true; do
   sleep $SN_INT
   t=$(up); dt=$((t - pt)); [ $dt -le 0 ] && dt=1
@@ -152,11 +157,17 @@ while true; do
     $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
   fi
 
-  # pulso persistido: a cada SN_FLUSH s; na bateria ou com load alto, sempre + sync
-  if [ "$pl" = 00 ] || [ "$l" -ge 4 ]; then $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
+  # pulso persistido: a cada SN_FLUSH s; a cada pulso só com load alto ou bateria perto do fim
+  if [ "$l" -ge 4 ] || { [ "$pl" = 00 ] && [ "${mv:-0}" -gt 0 ] && [ "$mv" -lt $SN_MV_PERTO ]; }; then
+    $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
   elif [ $((t - ult_flush)) -ge $SN_FLUSH ]; then $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t; fi
-  # pulso em RAM limitado
-  [ $($BB wc -l < $RAMP) -gt 400 ] && { $BB tail -200 $RAMP > $RAMP.n; mv $RAMP.n $RAMP; }
-  # caixa preta: mantém ~30 dias
-  ls $DIR/caixa-preta-*.log 2>/dev/null | $BB sort -r | $BB awk 'NR>30' | while read o; do rm -f "$o"; done
+  # faxina a cada ~5 min (antes era a cada pulso: 6 processos a mais a cada 5 s)
+  volta=$((volta + 1))
+  if [ $volta -ge 60 ]; then
+    volta=0
+    # pulso em RAM limitado
+    [ $($BB wc -l < $RAMP) -gt 400 ] && { $BB tail -200 $RAMP > $RAMP.n; mv $RAMP.n $RAMP; }
+    # caixa preta: mantém ~30 dias
+    ls $DIR/caixa-preta-*.log 2>/dev/null | $BB sort -r | $BB awk 'NR>30' | while read o; do rm -f "$o"; done
+  fi
 done

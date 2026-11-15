@@ -72,6 +72,12 @@ fi
 # Xposed sob SELinux: garante que o zygote consiga ler jar/módulos/prefs do GravityBox (ver o script)
 [ -x /system/bin/m7s-xposed-selinux ] && /system/bin/m7s-xposed-selinux >/dev/null 2>&1
 
+# 1.5.4: no boot nenhum daemon nosso está vivo → apaga os .pid da sessão anterior. Um PID velho que
+# no boot novo caísse num processo cujo cmdline citasse o daemon fazia ele achar que "já rodava" e
+# sair (15/11 20:39: m7s-botao não subiu).
+rm -f /data/local/tmp/m7s-telemetry.pid /data/local/tmp/m7s-sentinela.pid \
+      /data/local/tmp/m7s-botao.pid /data/local/tmp/m7s-powerguard.pid
+
 # telemetria leve (desligar: touch /data/m7s-telemetry.off)
 [ "$TELEMETRY" = 1 ] && [ -x /system/bin/m7s-telemetry ] && [ ! -f /data/m7s-telemetry.off ] && \
   $BB setsid /system/bin/m7s-telemetry </dev/null >/dev/null 2>&1 &
