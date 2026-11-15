@@ -1,0 +1,52 @@
+#!/system/bin/sh
+# m7s-botao — reinício forçado pelo botão liga/desliga (v1.5.3).
+# O M7s não tem reinício por hardware no botão: travado, só o palito no furo de reset resolvia.
+# Este serviço lê o teclado físico (/dev/input/event0, rk29-keypad) cru, direto do kernel — não depende
+# do Android, que é justamente o que trava — e, com o liga/desliga SEGURADO por BT_SEGURAR s:
+#   1. anota na caixa preta e tenta gravar o disco (sync em 2º plano);
+#   2. após BT_SYNC s reinicia pelo kernel (sysrq: sync de emergência, remonta só-leitura, reboot).
+# Toque curto e o menu de desligar (segurar ~1 s) continuam iguais.
+# Desligar: touch /data/m7s-botao.off
+BT_SEGURAR=8; BT_SYNC=4
+[ -f /data/m7s-botao.off ] && exit 0
+BB=/system/bin/busybox
+DEV=/dev/input/event0
+FLAG=/dev/m7s-botao-down
+PIDF=/data/local/tmp/m7s-botao.pid
+op=$(cat $PIDF 2>/dev/null)
+if [ -n "$op" ] && [ "$op" != $$ ] && $BB grep -q m7s-botao /proc/$op/cmdline 2>/dev/null; then exit 0; fi
+echo $$ > $PIDF
+$BB renice -n -20 -p $$ >/dev/null 2>&1
+echo -1000 > /proc/$$/oom_score_adj 2>/dev/null
+
+cx() { echo "/data/m7s-telemetry/caixa-preta-$(date +%Y-%m-%d).log"; }
+
+forcar() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') REINÍCIO FORÇADO pelo botão (segurado ${BT_SEGURAR}s); load $(cat /proc/loadavg)" >> $(cx)
+  $BB tail -60 /dev/m7s-pulso > /data/m7s-telemetry/pulso.txt 2>/dev/null
+  echo "$(date '+%Y-%m-%d %H:%M:%S') REINICIO-BOTAO" >> /data/m7s-telemetry/pulso.txt
+  sync &
+  sleep $BT_SYNC
+  echo s > /proc/sysrq-trigger; sleep 1
+  echo u > /proc/sysrq-trigger; sleep 1
+  echo b > /proc/sysrq-trigger
+}
+
+seq=0
+# Lê o evdev cru: struct input_event de 16 bytes (32 bits: timeval 8, type 2, code 2, value 4).
+# (getevent num pipe segura a saída em buffer — os eventos só chegavam em blocos de 4 KB.)
+# O fd fica aberto (exec 3<) para não perder evento entre uma leitura e outra.
+exec 3< $DEV
+while true; do
+  # busybox 1.11: od só em octal com deslocamento na 1ª coluna → $1 = offset, bytes em $2..$17
+  set -- $($BB dd bs=16 count=1 <&3 2>/dev/null | $BB od -b | $BB head -1)
+  [ $# -ge 17 ] || { sleep 1; continue; }
+  # bytes 9-10 = type (001 000 = EV_KEY), 11-12 = code (164 000 = 116 = KEY_POWER), 13 = value
+  [ "${10}${11}" = 001000 ] && [ "${12}${13}" = 164000 ] || continue
+  if [ "${14}" = 001 ]; then
+    seq=$((seq + 1)); n=$seq; echo $n > $FLAG   # cada aperto tem número próprio
+    ( sleep $BT_SEGURAR; [ "$(cat $FLAG 2>/dev/null)" = "$n" ] && forcar ) &
+  elif [ "${14}" = 000 ]; then
+    echo 0 > $FLAG
+  fi
+done

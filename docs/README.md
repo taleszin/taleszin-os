@@ -206,6 +206,10 @@ reinício forçado. O LMK do kernel 3.0 conta o ashmem do Chromium como cache de
 - LMK: 2º plano/cache passam a 48/64/96/128 MB. Bromite: `--renderer-process-limit=1`,
   `--disable-site-isolation-trials`; o `chrome-command-line` da ROM sempre substitui o antigo.
 - powerguard: o brilho devolvido na tomada sobrescrevia a variável de fonte ("fonte=0" no log).
+- `m7s-botao` (novo): **segurar o liga/desliga 8 s reinicia à força**, mesmo com o Android travado
+  (lê o teclado cru no kernel; sync, remonta só-leitura e reinicia via sysrq). Antes só o palito no
+  furo de reset resolvia. A caixa preta registra o reinício e o boot seguinte o classifica.
+- LMK: o ActivityManager regrava o `minfree` ao subir; o sentinela reaplica o da ROM.
 
 ### 1.5.2 — 2026-11-14 (proteção de bateria em degraus)
 Telemetria de 14/11 à noite (bateria, com a tensão ao vivo da 1.5.1): o degrau de 3,80 V descia a CPU

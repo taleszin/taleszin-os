@@ -18,15 +18,19 @@ umask 022
 #          "Ops!" e recarrega — melhor que 15 min de tela congelada; o navegador continua aberto;
 #     espera SN_COOL s antes de agir de novo.
 #   - CAIXA PRETA (/data/m7s-telemetry/caixa-preta-AAAA-MM-DD.log): pulso a cada SN_INT s em
-#     /dev (RAM, não gasta a NAND) e copiado para o disco a cada SN_FLUSH s (e já com sync em aperto
+#     /dev (RAM) e copiado com sync para o disco a cada SN_FLUSH s (15/11: com 60 s o travamento
+#     das 15:15 levou junto o último minuto) (e já com sync em aperto
 #     ou na bateria); cada intervenção leva um retrato (top memória/CPU, meminfo, vmstat, dmesg).
 #   - no boot, classifica como a sessão anterior acabou: desligamento limpo, bateria esgotada,
 #     travou (aperto nos últimos pulsos) ou parou sem aviso (reinício forçado/queda de energia).
 # Desligar: touch /data/m7s-sentinela.off
-SN_INT=5; SN_CONFIRM=2; SN_COOL=20; SN_FLUSH=60
+SN_INT=5; SN_CONFIRM=2; SN_COOL=20; SN_FLUSH=15
 SN_LOAD=8; SN_MAJ=250; SN_AVAIL_KB=61440; SN_GRACE=120   # boot: carga alta normal, só observa
 [ -r /system/etc/m7s.conf ] && . /system/etc/m7s.conf
 [ -f /data/m7s-sentinela.off ] && exit 0
+# LMK em páginas de 4 KB: frente/visível iguais ao padrão; 2º plano/cache 48/64/96/128 MB (ver install-recovery.sh)
+LMK_MINFREE=${LMK_MINFREE:-7475,9584,12288,16384,24576,32768}
+LMKF=/sys/module/lowmemorykiller/parameters/minfree
 
 BB=/system/bin/busybox
 DIR=/data/m7s-telemetry
@@ -79,9 +83,10 @@ retrato() {  # $1 = motivo
 }
 
 # ---------- como a sessão anterior acabou (lê o pulso persistido do boot anterior) ----------
-if [ -f $DISKP ]; then
+if [ -f $DISKP ] && [ "$(up)" -lt 300 ]; then   # só no boot (reiniciar o serviço não é "sessão anterior")
   ult=$($BB tail -1 $DISKP)
-  if $BB grep -q "DESLIGAMENTO-LIMPO" $DISKP; then fim="desligamento limpo"
+  if $BB grep -q "REINICIO-BOTAO" $DISKP; then fim="REINÍCIO FORÇADO pelo botão (travou)"
+  elif $BB grep -q "DESLIGAMENTO-LIMPO" $DISKP; then fim="desligamento limpo"
   else
     # campos do pulso: data hora up load avail_kb maj/s mv plug fg-adj0
     set -- $ult
@@ -117,6 +122,10 @@ while true; do
     ev "desligamento pedido ($(getprop sys.shutdown.requested))"; $BB tail -60 $RAMP > $DISKP; sync
   fi
 
+  # LMK: o ActivityManager regrava o minfree ao subir (e em troca de configuração); reaplica o da ROM
+  [ -n "$LMK_MINFREE" ] && [ "$(rd $LMKF)" != "$LMK_MINFREE" ] && [ "$(getprop sys.boot_completed)" = 1 ] && {
+    echo "$LMK_MINFREE" > $LMKF 2>/dev/null; ev "LMK minfree → $LMK_MINFREE"; }
+
   l=${load%%.*}
   if [ "$avail" -lt $SN_AVAIL_KB ] && { [ "$l" -ge $SN_LOAD ] || [ $majs -ge $SN_MAJ ]; }; then
     n_aperto=$((n_aperto + 1))
@@ -145,7 +154,7 @@ while true; do
 
   # pulso persistido: a cada SN_FLUSH s; na bateria ou com load alto, sempre + sync
   if [ "$pl" = 00 ] || [ "$l" -ge 4 ]; then $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t
-  elif [ $((t - ult_flush)) -ge $SN_FLUSH ]; then $BB tail -60 $RAMP > $DISKP; ult_flush=$t; fi
+  elif [ $((t - ult_flush)) -ge $SN_FLUSH ]; then $BB tail -60 $RAMP > $DISKP; sync; ult_flush=$t; fi
   # pulso em RAM limitado
   [ $($BB wc -l < $RAMP) -gt 400 ] && { $BB tail -200 $RAMP > $RAMP.n; mv $RAMP.n $RAMP; }
   # caixa preta: mantém ~30 dias

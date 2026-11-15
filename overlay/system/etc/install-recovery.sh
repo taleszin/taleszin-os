@@ -23,7 +23,7 @@ echo 50  > /proc/sys/vm/vfs_cache_pressure  # segura dentries/inodes (muitos arq
 # texturas) como "Cached" descartável — não é. Com o padrão (29…78 MB) ele nunca matava nada e o
 # sistema travava em thrash (15/11 13:12, 15 min). Frente/visível iguais; 2º plano/cache sobem.
 LMK=/sys/module/lowmemorykiller/parameters/minfree
-[ -w $LMK ] && echo "${LMK_MINFREE:-7475,9584,12288,16384,24576,32768}" > $LMK
+[ -w $LMK ] && echo "${LMK_MINFREE:-7475,9584,12288,16384,24576,32768}" > $LMK   # o AMS regrava no boot; o m7s-sentinela reaplica
 
 # KSM: funde páginas idênticas entre processos (heaps Dalvik). ~400 KB/s de varredura; ksmd
 # não acorda o aparelho em suspend (kernel congelado). Medir: /sys/kernel/mm/ksm/pages_sharing.
@@ -79,6 +79,10 @@ fi
 # sentinela anti-travamento + caixa preta (desligar: touch /data/m7s-sentinela.off)
 [ -x /system/bin/m7s-sentinela ] && [ ! -f /data/m7s-sentinela.off ] && \
   $BB setsid /system/bin/m7s-sentinela </dev/null >/dev/null 2>&1 &
+
+# reinício forçado segurando o liga/desliga 8 s (desligar: touch /data/m7s-botao.off)
+[ -x /system/bin/m7s-botao ] && [ ! -f /data/m7s-botao.off ] && \
+  $BB setsid /system/bin/m7s-botao </dev/null >/dev/null 2>&1 &
 
 # guarda de bateria: teto de CPU fora da tomada + desligamento limpo em tensão baixa
 # (desligar: touch /data/m7s-powerguard.off). Ver docs/HARDWARE.md, seção Bateria.
